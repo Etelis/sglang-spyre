@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=68", "setuptools_scm>=8"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sglang-spyre-backend"
+version = "0.1.0.dev0"
+description = "SGLang backend for IBM Spyre AIU accelerator"
+requires-python = ">=3.11"
+dependencies = [
+    "sglang",
+    "torch~=2.11.0",
+    "torch-spyre",
+]
+
+[project.entry-points."sglang.srt.platforms"]
+spyre = "sglang_spyre_backend:activate"
+
+[tool.setuptools.packages.find]
+include = ["sglang_spyre_backend*"]
