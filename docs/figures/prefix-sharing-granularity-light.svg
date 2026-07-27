@@ -1,0 +1,171 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 438" width="700" height="438" role="img" aria-label="Block-aligned prefix sharing rounds down to the last whole 16-token block, sharing 192 of 200 tokens and 48 of 51. Radix sharing ends where the prefix does, sharing 200 of 200 and 51 of 51.">
+<style>
+  .bg   { fill: #fcfcfb; }
+  .t1   { fill: #0b0b0b;   font: 600 17px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  .t2   { fill: #52514e;  font: 400 13px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  .cat  { fill: #0b0b0b;   font: 400 13.5px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  .sub  { fill: #898781; font: 400 12px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  .grp  { fill: #52514e;  font: 600 11.5px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+           letter-spacing: .07em; text-transform: uppercase; }
+  .val  { fill: #52514e;  font: 400 12.5px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+           font-variant-numeric: tabular-nums; }
+  .zero { fill: #898781; font: 400 12.5px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  .tick { fill: #898781; font: 400 12px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+           font-variant-numeric: tabular-nums; text-anchor: middle; }
+  .note { fill: #898781; font: 400 12px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  .gl   { stroke: #e1e0d9; stroke-width: 1; }
+  .ax   { stroke: #c3c2b7; stroke-width: 1; }
+  .tk   { stroke: #898781; stroke-width: 1; }
+  .gap  { fill: #fcfcfb; }
+  .trk  { fill: #d6d5cd; }
+  .a    { fill: #2a78d6; }
+  .b    { fill: #eb6834; }
+</style>
+<rect class="bg" x="0" y="0" width="700" height="438"/>
+<text class="t1" x="20" y="30">Where prefix sharing stops</text>
+<text class="t2" x="20" y="53">Block-aligned sharing reuses whole blocks only, so it gives up the tail.</text>
+<text class="t2" x="20" y="71">Radix sharing ends where the prefix does.</text>
+<rect class="a" x="20" y="86" width="11" height="11" rx="2"/>
+<text class="t2" x="37" y="96">shared — vLLM, 16-token blocks</text>
+<rect class="b" x="242" y="86" width="11" height="11" rx="2"/>
+<text class="t2" x="259" y="96">shared — SGLang RadixCache</text>
+<rect class="trk" x="462" y="86" width="11" height="11" rx="2"/>
+<text class="t2" x="479" y="96">recomputed</text>
+<text class="grp" x="20" y="125">A 200-token system prompt</text>
+<text class="cat" x="20" y="150">vLLM</text>
+<rect class="a" x="180" y="137" width="342.7" height="18" rx="2"/>
+<rect class="trk" x="522.7" y="137" width="14.3" height="18" rx="2"/>
+<rect class="gap" x="207.8" y="137" width="1.5" height="18"/>
+<rect class="gap" x="236.4" y="137" width="1.5" height="18"/>
+<rect class="gap" x="264.9" y="137" width="1.5" height="18"/>
+<rect class="gap" x="293.5" y="137" width="1.5" height="18"/>
+<rect class="gap" x="322.0" y="137" width="1.5" height="18"/>
+<rect class="gap" x="350.6" y="137" width="1.5" height="18"/>
+<rect class="gap" x="379.2" y="137" width="1.5" height="18"/>
+<rect class="gap" x="407.7" y="137" width="1.5" height="18"/>
+<rect class="gap" x="436.3" y="137" width="1.5" height="18"/>
+<rect class="gap" x="464.8" y="137" width="1.5" height="18"/>
+<rect class="gap" x="493.4" y="137" width="1.5" height="18"/>
+<rect class="gap" x="521.7" y="137" width="2" height="18"/>
+<text class="val" x="549" y="150">192 of 200</text>
+<text class="cat" x="20" y="190">SGLang</text>
+<rect class="b" x="180" y="177" width="357" height="18" rx="2"/>
+<text class="val" x="549" y="190">200 of 200</text>
+<text class="note" x="180" y="218">The partial tail block does not count — 8 tokens re-prefilled every request.</text>
+<line class="gl" x1="20" y1="242" x2="680" y2="242"/>
+<text class="grp" x="20" y="266">The measured case — 51-token shared prefix, one cell per token</text>
+<text class="cat" x="20" y="292">vLLM</text>
+<rect class="a" x="180" y="279" width="335" height="16" rx="2"/>
+<rect class="trk" x="516" y="279" width="20" height="16" rx="2"/>
+<rect class="gap" x="186.0" y="279" width="1" height="16"/>
+<rect class="gap" x="193.0" y="279" width="1" height="16"/>
+<rect class="gap" x="200.0" y="279" width="1" height="16"/>
+<rect class="gap" x="207.0" y="279" width="1" height="16"/>
+<rect class="gap" x="214.0" y="279" width="1" height="16"/>
+<rect class="gap" x="221.0" y="279" width="1" height="16"/>
+<rect class="gap" x="228.0" y="279" width="1" height="16"/>
+<rect class="gap" x="235.0" y="279" width="1" height="16"/>
+<rect class="gap" x="242.0" y="279" width="1" height="16"/>
+<rect class="gap" x="249.0" y="279" width="1" height="16"/>
+<rect class="gap" x="256.0" y="279" width="1" height="16"/>
+<rect class="gap" x="263.0" y="279" width="1" height="16"/>
+<rect class="gap" x="270.0" y="279" width="1" height="16"/>
+<rect class="gap" x="277.0" y="279" width="1" height="16"/>
+<rect class="gap" x="284.0" y="279" width="1" height="16"/>
+<rect class="gap" x="291.0" y="279" width="2" height="16"/>
+<rect class="gap" x="298.0" y="279" width="1" height="16"/>
+<rect class="gap" x="305.0" y="279" width="1" height="16"/>
+<rect class="gap" x="312.0" y="279" width="1" height="16"/>
+<rect class="gap" x="319.0" y="279" width="1" height="16"/>
+<rect class="gap" x="326.0" y="279" width="1" height="16"/>
+<rect class="gap" x="333.0" y="279" width="1" height="16"/>
+<rect class="gap" x="340.0" y="279" width="1" height="16"/>
+<rect class="gap" x="347.0" y="279" width="1" height="16"/>
+<rect class="gap" x="354.0" y="279" width="1" height="16"/>
+<rect class="gap" x="361.0" y="279" width="1" height="16"/>
+<rect class="gap" x="368.0" y="279" width="1" height="16"/>
+<rect class="gap" x="375.0" y="279" width="1" height="16"/>
+<rect class="gap" x="382.0" y="279" width="1" height="16"/>
+<rect class="gap" x="389.0" y="279" width="1" height="16"/>
+<rect class="gap" x="396.0" y="279" width="1" height="16"/>
+<rect class="gap" x="403.0" y="279" width="2" height="16"/>
+<rect class="gap" x="410.0" y="279" width="1" height="16"/>
+<rect class="gap" x="417.0" y="279" width="1" height="16"/>
+<rect class="gap" x="424.0" y="279" width="1" height="16"/>
+<rect class="gap" x="431.0" y="279" width="1" height="16"/>
+<rect class="gap" x="438.0" y="279" width="1" height="16"/>
+<rect class="gap" x="445.0" y="279" width="1" height="16"/>
+<rect class="gap" x="452.0" y="279" width="1" height="16"/>
+<rect class="gap" x="459.0" y="279" width="1" height="16"/>
+<rect class="gap" x="466.0" y="279" width="1" height="16"/>
+<rect class="gap" x="473.0" y="279" width="1" height="16"/>
+<rect class="gap" x="480.0" y="279" width="1" height="16"/>
+<rect class="gap" x="487.0" y="279" width="1" height="16"/>
+<rect class="gap" x="494.0" y="279" width="1" height="16"/>
+<rect class="gap" x="501.0" y="279" width="1" height="16"/>
+<rect class="gap" x="508.0" y="279" width="1" height="16"/>
+<rect class="gap" x="515.0" y="279" width="2" height="16"/>
+<rect class="gap" x="522.0" y="279" width="1" height="16"/>
+<rect class="gap" x="529.0" y="279" width="1" height="16"/>
+<text class="val" x="549" y="292">48 of 51</text>
+<line class="tk" x1="291.5" y1="299" x2="291.5" y2="305"/>
+<line class="tk" x1="403.5" y1="299" x2="403.5" y2="305"/>
+<line class="tk" x1="515.5" y1="299" x2="515.5" y2="305"/>
+<text class="note" x="180" y="319">16-token block boundaries — sharing can only stop on one, so 3 tokens are lost.</text>
+<text class="cat" x="20" y="349">SGLang</text>
+<rect class="b" x="180" y="336" width="356" height="16" rx="2"/>
+<rect class="gap" x="186.0" y="336" width="1" height="16"/>
+<rect class="gap" x="193.0" y="336" width="1" height="16"/>
+<rect class="gap" x="200.0" y="336" width="1" height="16"/>
+<rect class="gap" x="207.0" y="336" width="1" height="16"/>
+<rect class="gap" x="214.0" y="336" width="1" height="16"/>
+<rect class="gap" x="221.0" y="336" width="1" height="16"/>
+<rect class="gap" x="228.0" y="336" width="1" height="16"/>
+<rect class="gap" x="235.0" y="336" width="1" height="16"/>
+<rect class="gap" x="242.0" y="336" width="1" height="16"/>
+<rect class="gap" x="249.0" y="336" width="1" height="16"/>
+<rect class="gap" x="256.0" y="336" width="1" height="16"/>
+<rect class="gap" x="263.0" y="336" width="1" height="16"/>
+<rect class="gap" x="270.0" y="336" width="1" height="16"/>
+<rect class="gap" x="277.0" y="336" width="1" height="16"/>
+<rect class="gap" x="284.0" y="336" width="1" height="16"/>
+<rect class="gap" x="291.0" y="336" width="2" height="16"/>
+<rect class="gap" x="298.0" y="336" width="1" height="16"/>
+<rect class="gap" x="305.0" y="336" width="1" height="16"/>
+<rect class="gap" x="312.0" y="336" width="1" height="16"/>
+<rect class="gap" x="319.0" y="336" width="1" height="16"/>
+<rect class="gap" x="326.0" y="336" width="1" height="16"/>
+<rect class="gap" x="333.0" y="336" width="1" height="16"/>
+<rect class="gap" x="340.0" y="336" width="1" height="16"/>
+<rect class="gap" x="347.0" y="336" width="1" height="16"/>
+<rect class="gap" x="354.0" y="336" width="1" height="16"/>
+<rect class="gap" x="361.0" y="336" width="1" height="16"/>
+<rect class="gap" x="368.0" y="336" width="1" height="16"/>
+<rect class="gap" x="375.0" y="336" width="1" height="16"/>
+<rect class="gap" x="382.0" y="336" width="1" height="16"/>
+<rect class="gap" x="389.0" y="336" width="1" height="16"/>
+<rect class="gap" x="396.0" y="336" width="1" height="16"/>
+<rect class="gap" x="403.0" y="336" width="2" height="16"/>
+<rect class="gap" x="410.0" y="336" width="1" height="16"/>
+<rect class="gap" x="417.0" y="336" width="1" height="16"/>
+<rect class="gap" x="424.0" y="336" width="1" height="16"/>
+<rect class="gap" x="431.0" y="336" width="1" height="16"/>
+<rect class="gap" x="438.0" y="336" width="1" height="16"/>
+<rect class="gap" x="445.0" y="336" width="1" height="16"/>
+<rect class="gap" x="452.0" y="336" width="1" height="16"/>
+<rect class="gap" x="459.0" y="336" width="1" height="16"/>
+<rect class="gap" x="466.0" y="336" width="1" height="16"/>
+<rect class="gap" x="473.0" y="336" width="1" height="16"/>
+<rect class="gap" x="480.0" y="336" width="1" height="16"/>
+<rect class="gap" x="487.0" y="336" width="1" height="16"/>
+<rect class="gap" x="494.0" y="336" width="1" height="16"/>
+<rect class="gap" x="501.0" y="336" width="1" height="16"/>
+<rect class="gap" x="508.0" y="336" width="1" height="16"/>
+<rect class="gap" x="515.0" y="336" width="2" height="16"/>
+<rect class="gap" x="522.0" y="336" width="1" height="16"/>
+<rect class="gap" x="529.0" y="336" width="1" height="16"/>
+<text class="val" x="549" y="349">51 of 51</text>
+<text class="note" x="180" y="376">No block structure to round down to.</text>
+<text class="note" x="20" y="408">Measured on Granite-1B: four prompts sharing a 51-token prefix reported</text>
+<text class="note" x="20" y="426">cached_tokens = [0, 51, 50, 51] — an 82% prompt cache hit.</text>
+</svg>

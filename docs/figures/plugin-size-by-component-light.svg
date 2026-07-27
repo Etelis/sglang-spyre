@@ -1,0 +1,81 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 572" width="700" height="572" role="img" aria-label="Plugin size by component. spyre-inference on vLLM totals 2797 non-blank lines; sglang-spyre on SGLang totals 1674. The largest single difference is the Worker and ModelRunner category, 483 lines in vLLM and absent entirely from the SGLang plugin.">
+<style>
+  .bg   { fill: #fcfcfb; }
+  .t1   { fill: #0b0b0b;   font: 600 17px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  .t2   { fill: #52514e;  font: 400 13px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  .cat  { fill: #0b0b0b;   font: 400 13.5px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  .sub  { fill: #898781; font: 400 12px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  .grp  { fill: #52514e;  font: 600 11.5px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+           letter-spacing: .07em; text-transform: uppercase; }
+  .val  { fill: #52514e;  font: 400 12.5px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+           font-variant-numeric: tabular-nums; }
+  .zero { fill: #898781; font: 400 12.5px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  .tick { fill: #898781; font: 400 12px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+           font-variant-numeric: tabular-nums; text-anchor: middle; }
+  .note { fill: #898781; font: 400 12px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  .gl   { stroke: #e1e0d9; stroke-width: 1; }
+  .ax   { stroke: #c3c2b7; stroke-width: 1; }
+  .tk   { stroke: #898781; stroke-width: 1; }
+  .gap  { fill: #fcfcfb; }
+  .trk  { fill: #d6d5cd; }
+  .a    { fill: #2a78d6; }
+  .b    { fill: #eb6834; }
+</style>
+<rect class="bg" x="0" y="0" width="700" height="572"/>
+<text class="t1" x="20" y="30">Where the plugin code goes</text>
+<text class="t2" x="20" y="52">Non-blank lines of Python, counted the same way on both plugins. Totals: 2,797 vs 1,674.</text>
+<rect class="a" x="20" y="65" width="11" height="11" rx="2"/>
+<text class="t2" x="37" y="75">spyre-inference (vLLM)</text>
+<rect class="b" x="192" y="65" width="11" height="11" rx="2"/>
+<text class="t2" x="209" y="75">sglang-spyre (SGLang)</text>
+<line class="gl" x1="354.7" y1="106" x2="354.7" y2="482"/>
+<text class="tick" x="354.7" y="504">400</text>
+<line class="gl" x1="481.3" y1="106" x2="481.3" y2="482"/>
+<text class="tick" x="481.3" y="504">800</text>
+<line class="gl" x1="608.0" y1="106" x2="608.0" y2="482"/>
+<text class="tick" x="608.0" y="504">1,200</text>
+<line class="ax" x1="228" y1="106" x2="228" y2="482"/>
+<text class="tick" x="228" y="504">0</text>
+<text class="grp" x="20" y="100">Comparable surface</text>
+<text class="cat" x="20" y="132">Attention</text>
+<path class="a" d="M228,114 H585.6 a4,4 0 0 1 4,4 V123 a4,4 0 0 1 -4,4 H228 Z"/>
+<text class="val" x="601.6" y="125">1,142</text>
+<path class="b" d="M228,129 H444.4 a4,4 0 0 1 4,4 V138 a4,4 0 0 1 -4,4 H228 Z"/>
+<text class="val" x="460.4" y="140">696</text>
+<text class="cat" x="20" y="174">Worker + ModelRunner</text>
+<path class="a" d="M228,156 H376.9 a4,4 0 0 1 4,4 V165 a4,4 0 0 1 -4,4 H228 Z"/>
+<text class="val" x="392.9" y="167">483</text>
+<text class="zero" x="234" y="182">0 — no such class in SGLang</text>
+<text class="cat" x="20" y="216">Custom ops</text>
+<text class="sub" x="20" y="231">norm, activation, RoPE, linear</text>
+<path class="a" d="M228,198 H387.4 a4,4 0 0 1 4,4 V207 a4,4 0 0 1 -4,4 H228 Z"/>
+<text class="val" x="403.4" y="209">516</text>
+<path class="b" d="M228,213 H357.3 a4,4 0 0 1 4,4 V222 a4,4 0 0 1 -4,4 H228 Z"/>
+<text class="val" x="373.3" y="224">421</text>
+<text class="cat" x="20" y="258">Platform + registration</text>
+<path class="a" d="M228,240 H283.2 a4,4 0 0 1 4,4 V249 a4,4 0 0 1 -4,4 H228 Z"/>
+<text class="val" x="299.2" y="251">187</text>
+<path class="b" d="M228,255 H308.9 a4,4 0 0 1 4,4 V264 a4,4 0 0 1 -4,4 H228 Z"/>
+<text class="val" x="324.9" y="266">268</text>
+<text class="cat" x="20" y="300">KV pool + allocator</text>
+<text class="zero" x="234" y="293">0 — inside vLLM's ModelRunner</text>
+<path class="b" d="M228,297 H259.1 a4,4 0 0 1 4,4 V306 a4,4 0 0 1 -4,4 H228 Z"/>
+<text class="val" x="275.1" y="308">111</text>
+<text class="cat" x="20" y="342">Init, env, boundary hooks</text>
+<path class="a" d="M228,324 H275.6 a4,4 0 0 1 4,4 V333 a4,4 0 0 1 -4,4 H228 Z"/>
+<text class="val" x="291.6" y="335">163</text>
+<path class="b" d="M228,339 H280.4 a4,4 0 0 1 4,4 V348 a4,4 0 0 1 -4,4 H228 Z"/>
+<text class="val" x="296.4" y="350">178</text>
+<line class="gl" x1="20" y1="376" x2="680" y2="376"/>
+<text class="grp" x="20" y="398">Not implemented here — not a framework saving</text>
+<text class="cat" x="20" y="430">Tensor-parallel comms</text>
+<path class="a" d="M228,412 H282.3 a4,4 0 0 1 4,4 V421 a4,4 0 0 1 -4,4 H228 Z"/>
+<text class="val" x="298.3" y="423">184</text>
+<text class="zero" x="234" y="438">0</text>
+<text class="cat" x="20" y="472">Parallel LM head</text>
+<path class="a" d="M228,454 H262.6 a4,4 0 0 1 4,4 V463 a4,4 0 0 1 -4,4 H228 Z"/>
+<text class="val" x="278.6" y="465">122</text>
+<text class="zero" x="234" y="480">0</text>
+<text class="note" x="20" y="538">On comparable surface the SGLang plugin is 1,674 lines against 2,491 — about a third less code. The 306 lines</text>
+<text class="note" x="20" y="556">below the rule are features it does not have yet, and are roughly a quarter of the raw difference.</text>
+</svg>
