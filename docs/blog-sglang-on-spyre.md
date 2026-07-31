@@ -19,7 +19,6 @@ compute coexisting end-to-end.
      environment-sensitive than the TPS figures that did turn out wrong — but
      re-run tests/test_radix_demo.py and confirm before this ships. -->
 
-
 This post is about what it took, what the framework gave us for free, what it
 didn't, and — since this is a prototype and not a product — what still doesn't
 work.
@@ -242,6 +241,15 @@ Running the same check with the model body also on the device gives output
 byte-identical to the attention-only mode. That clears the on-device RMSNorm,
 SiluAndMul, RoPE and Linear paths, and localises any residual numerical
 difference to `_attn_4d` alone.
+
+If you are bringing a framework up on new silicon, this check is cheap and we'd
+recommend it early — but with one trap worth naming, because we fell into it.
+The verdict has to key on *which* prompts diverge, not how many. Our first
+comparator just counted matches, and it cheerfully reported a pass for a backend
+that was answering "the first three prime numbers are" with "1, 2, 3, 4, 5". A
+divergence on an unambiguous prompt is a defect; a divergence on an open-ended
+one, where the top logits are tied, is expected bf16 noise. Score them the same
+way and the harness will tell you exactly what you want to hear.
 
 **Throughput.** All modes measured in one sitting on one machine — Granite-1B
 (`micro-g3.3-8b-instruct-1b`, 4 layers, 32 query heads over 8 KV heads), 200
