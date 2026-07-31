@@ -107,8 +107,33 @@ block-table interpretation, extend-versus-decode dispatch, and GQA and causal
 handling. SGLang ships `TorchNativeAttnBackend`, a real base class with working
 defaults in pure torch. Our Spyre backend subclasses it and overrides exactly
 one seam — the inner SDPA call — swapping `F.scaled_dot_product_attention` for
-the bucketed `_attn_4d`. The gather, the pool save, the dispatch bookkeeping,
-the causal masking: all inherited, none rewritten.
+the bucketed `_attn_4d`:
+
+```python
+class SpyreAttnBackend(TorchNativeAttnBackend):
+    """Reuse TorchNativeAttnBackend; swap only the SDPA seam."""
+
+    # The base class hands these the already-gathered query and the KV
+    # buffers, and expects results written into `output` in place. Note
+    # enable_gqa / causal / sliding_window arrive resolved — the base worked
+    # them out, so the device code never has to.
+    def _run_sdpa_forward_extend(
+        self, query, output, k_cache, v_cache,
+        req_to_token, req_pool_indices, seq_lens,
+        extend_prefix_lens, extend_seq_lens,
+        encoder_lens=None, scaling=None, enable_gqa=False,
+        causal=False, is_cross_attn=False, sliding_window_size=None,
+    ):
+        return self._spyre_sdpa(...)   # bucketed _attn_4d, on the AIU
+
+    def _run_sdpa_forward_decode(self, query, output, k_cache, v_cache, ...):
+        return self._spyre_sdpa(...)
+```
+
+That's the whole device-specific surface for attention. The KV gather, the pool
+save, the extend-versus-decode dispatch, the GQA and causal handling: all
+inherited, none rewritten. The 696 lines on our side are mostly the bucketing
+and shape gymnastics `_attn_4d` needs, not framework plumbing.
 
 **No dual-buffer dance.** vLLM V1's sampler runs CPU-side and expects integer
 inputs — token IDs, positions — to arrive on CPU while model tensors live on
@@ -263,14 +288,14 @@ got it running, and running is what exposed the second, still-open defect in the
 gather path. Two bugs wearing one trench coat, and the outer one had been
 misattributed to the vendor toolchain.
 
-The reasons for the overall gap are understood and mostly not about SGLang. Every
-distinct query and KV bucket compiles its own graph, so a warm run is still
-paying dispatch overhead a fused GPU kernel wouldn't. In the two correct modes
-the prefix KV lives on CPU, so a RadixCache hit saves recomputation but not
-re-transfer — the scheduler correctly skips the prefill, then every forward
-uploads the prefix KV anyway. And `num_seqs == 1` is hard-coded in both plugins'
-attention backends, so continuous batching, the thing that makes serving
-throughput interesting, isn't in play at all.
+The reasons for the overall gap are understood and mostly not about SGLang. In
+the two correct modes the prefix KV lives on CPU, so a RadixCache hit saves
+recomputation but not re-transfer — the scheduler correctly skips the prefill,
+then every forward uploads the prefix KV anyway. `num_seqs == 1` is hard-coded in
+both plugins' attention backends, so continuous batching, the thing that makes
+serving throughput interesting, isn't in play at all. And the static-shape
+compilation regime described in the next section means even a warm run pays
+dispatch overhead a fused GPU kernel wouldn't.
 
 A comparison against vLLM on the same hardware would be the useful next
 measurement, and we don't have one taken under these conditions. We'd rather
@@ -351,20 +376,38 @@ classes, with four upstreamable patches rather than a fork to reconcile, keeping
 it current is cheap. That was the actual reason to be careful about *how* we
 integrated, more than the line count.
 
+## Not the only one through this door
+
+While we were writing this up, RadixArk and Google
+[announced](https://www.lmsys.org/blog/2026-07-30-sglang-google-tpu)
+`SGL-torchtpu` — SGLang on Google's TPUs, with Radix Cache, quantization,
+speculative decoding and several parallelism strategies on the roadmap.
+
+We found out after the work described here was already running, which is the
+reassuring part. Two teams, with no contact and very different silicon, reached
+for the same framework to serve on non-GPU hardware at roughly the same moment.
+That is a better signal about SGLang's extension points than anything we could
+conclude from our own line counts.
+
+It also changes what to do about the rough edges. A CUDA-only import and a Triton
+assumption are mild annoyances if we're the only ones who ever hit them, and
+worth upstreaming if every new backend hits them in turn. On the evidence, it's
+the second. Every backend that follows then pays the cost once less.
+
 ## Where this leaves things
 
 Spyre now runs SGLang. It's a prototype: single tenant, batch of one, no tensor
-parallelism, on-device KV still in progress, and no configuration that beats CPU
-on a 1B model yet. All of that is written down in the repo alongside the parts
-that work.
+parallelism, on-device KV running but incorrect, and no configuration that beats
+CPU on a 1B model yet. All of that is written down in the repo alongside the
+parts that work.
 
 What's genuinely established is the shape of the thing. RadixCache scheduling
-and Spyre compute coexist end-to-end. The plugin surface holds up: a platform
-registered through a documented entry point, an attention backend that inherits
-almost everything, a KV pool one method away from device residency. And on
-comparable functionality the integration cost is about a third less than the
-same job took against vLLM, for structural reasons that won't change when the
-toolchain does.
+and Spyre compute coexist end-to-end, and the attention kernel reproduces CPU
+output token for token. The plugin surface holds up: a platform registered
+through a documented entry point, an attention backend that inherits almost
+everything, a KV pool one method away from device residency. And on comparable
+functionality the integration cost is about a third less than the same job took
+against vLLM, for structural reasons that won't change when the toolchain does.
 
 Two frameworks on one accelerator isn't a competition to resolve. They're good
 at different things — vLLM's continuous batching scheduler has three more years
@@ -372,24 +415,14 @@ of tuning behind it and a broader serving-feature matrix, and SGLang's
 any-length prefix sharing is the better fit for shared-prompt workloads. The
 useful outcome is having both, and knowing concretely which one to reach for.
 
-It's also worth saying that Spyre isn't the only accelerator walking through this
-particular door. On 30 July 2026, RadixArk and Google
-[announced](https://www.lmsys.org/blog/2026-07-30-sglang-google-tpu)
-`SGL-torchtpu`, bringing SGLang to Google's TPUs, with Radix Cache, quantization,
-speculative decoding and several parallelism strategies on the roadmap.
+The plugin lives at
+[`torch-spyre/sglang-spyre`](https://github.com/torch-spyre/sglang-spyre). The
+README covers the runtime modes and the setup gotchas; `docs/sglang-vs-vllm.md`
+has the full framework comparison and the measured numbers, including the ones
+that contradict what we expected. The four SGLang patches are in
+`sglang_oot_patches/` as individual diffs, ready to be argued about upstream.
 
-We learned about that after the work described here was already running, which is
-the reassuring part. Two independent teams reached for the same framework to
-serve on non-GPU silicon at roughly the same moment, which is a decent signal
-that the extension points we leaned on are the ones the ecosystem is converging
-on.
-
-It also changes what to do about the rough edges. If every new backend hits the
-same CUDA-only import and the same Triton assumption, those are worth fixing
-upstream rather than routing around privately. Every backend that follows then
-pays the cost once less.
-
-The code is public, the failure modes are documented, and the gotchas that cost
-us days are written down so they don't cost anyone else the same. If you work on
-inference frameworks, accelerators, or the glue between them, we'd welcome the
-company.
+The failure modes are documented alongside the parts that work, and the gotchas
+that cost us days are written down so they don't cost anyone else the same. If
+you work on inference frameworks, accelerators, or the glue between them, we'd
+welcome the company.
