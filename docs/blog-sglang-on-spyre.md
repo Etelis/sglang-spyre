@@ -1,27 +1,20 @@
 # A Growing Stack: Bringing SGLang to Spyre
 
-Four prompts sharing a 51-token system prompt. The first one pays for the
-prefix; the next three don't. On the IBM Spyre AIU, running through SGLang's
-scheduler, that looks like this:
+Ask a 1B model for the capital of France, the freezing point of water, the first
+three prime numbers, and what comes after 1, 2, 3, 4, 5, 6, 7. Run it twice:
+once with attention on CPU, once with every attention layer executing on an IBM
+Spyre AIU. The two runs produce byte-identical text, token for token, 24 tokens
+deep, on all four prompts.
 
-```
-cached_tokens = [0, 51, 50, 51]
-```
+The Spyre run is also six times slower than the CPU it agrees with.
 
-An 82% prompt cache hit on Granite-1B, with every attention layer's math
-executing on the accelerator. That's SGLang's RadixCache scheduler and Spyre
-compute coexisting end-to-end.
+And a third configuration, the one that keeps the KV cache on the accelerator
+where it belongs, is twice as fast as either — and answers that prime-numbers
+question with "1, 2, 3, 4, 5".
 
-<!-- REVIEW NOTE (remove before publishing): this cached_tokens figure is the
-     one number in this post carried over from the repo (sglang_oot_patches/
-     README.md) rather than re-measured during the 2026-07-26 sweep. It is a
-     deterministic scheduler behaviour rather than a timing, so it is far less
-     environment-sensitive than the TPS figures that did turn out wrong — but
-     re-run tests/test_radix_demo.py and confirm before this ships. -->
-
-This post is about what it took, what the framework gave us for free, what it
-didn't, and — since this is a prototype and not a product — what still doesn't
-work.
+All three of those facts are the point. This post is about what it took to get
+SGLang serving on Spyre, what the framework gave us for free, what it didn't,
+and what the measurements said once we stopped assuming we knew.
 
 ## What actually runs
 
@@ -48,12 +41,28 @@ It runs in a few configurations, selected by `attention_backend` on
   and it's the fastest of the four, but it currently computes the wrong answer.
   That story is worth telling properly and we come back to it below.
 
-All of them run the same SGLang scheduler, which is the point. The prefix
-sharing above isn't something the backend participates in. SGLang's RadixCache
-lives in the scheduler proper, resolves the shared prefix to KV-pool slots
-before the forward begins, and hands the attention backend a `req_to_token`
-table that already encodes the hit. From the device's perspective, a cache hit
-is simply work that never arrives.
+All of them run the same SGLang scheduler, which is the point. Send four prompts
+that share a 51-token system prompt and the scheduler reports:
+
+```
+cached_tokens = [0, 51, 50, 51]
+```
+
+The first request pays for the prefix and the next three don't — an 82% prompt
+cache hit, on an accelerator that has no idea any of this is happening.
+
+<!-- REVIEW NOTE (remove before publishing): this cached_tokens figure is the
+     one number in this post carried over from the repo (sglang_oot_patches/
+     README.md) rather than re-measured during the 2026-07-26 sweep. It is a
+     deterministic scheduler behaviour rather than a timing, so it is far less
+     environment-sensitive than the TPS figures that did turn out wrong — but
+     re-run tests/test_radix_demo.py and confirm before this ships. -->
+
+That last part is the design worth noticing. Prefix sharing is not something the
+backend participates in. SGLang's RadixCache lives in the scheduler proper,
+resolves the shared prefix to KV-pool slots before the forward begins, and hands
+the attention backend a `req_to_token` table that already encodes the hit. From
+the device's perspective, a cache hit is simply work that never arrives.
 
 ## Why it took a third less code
 
