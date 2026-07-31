@@ -134,12 +134,13 @@ save, the extend-versus-decode dispatch, the GQA and causal handling: all
 inherited, none rewritten. The 696 lines on our side are mostly the bucketing
 and shape gymnastics `_attn_4d` needs, not framework plumbing.
 
-**No dual-buffer dance.** vLLM V1's sampler runs CPU-side and expects integer
-inputs — token IDs, positions — to arrive on CPU while model tensors live on
-the device. `spyre-inference` carries a `_SpyreModelWrapper` that does that
-conversion at the model boundary on every single forward. In SGLang's
-attention-only mode, no staging is required at all. In the on-device-body mode,
-about ten lines of boundary hooks cover the same ground.
+A third saving doesn't show up as its own row, because it's spread across the
+ones above: there is no dual-buffer dance. vLLM V1's sampler runs CPU-side and
+expects integer inputs — token IDs, positions — to arrive on CPU while model
+tensors live on the device, so `spyre-inference` carries a `_SpyreModelWrapper`
+doing that conversion at the model boundary on every single forward. In SGLang's
+attention-only mode no staging is required at all, and in the on-device-body
+mode about ten lines of boundary hooks cover the same ground.
 
 Two rows run the other way, and they're the honest cost of the trade. Our KV
 pool and allocator are 111 lines that vLLM appears to spend nothing on — but
