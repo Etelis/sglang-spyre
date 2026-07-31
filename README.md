@@ -82,18 +82,30 @@ Request 2 (warm — kernels cached)...
 
 ## What does NOT work yet
 
-- **KV cache on Spyre device**: currently lives on CPU and gets
-  transferred per-call. This means RadixCache prefix hits avoid
-  *recomputation* (the scheduler sees the prefix as already-attended)
-  but not *re-transfer* — every forward still uploads the prefix KV.
+- **KV cache on Spyre device**: in the default modes the KV cache lives on
+  CPU and is transferred per-call, so RadixCache prefix hits avoid
+  *recomputation* (the scheduler sees the prefix as already-attended) but
+  not *re-transfer* — every forward still uploads the prefix KV.
   True radix-on-Spyre needs the BMM scatter/gather backend
-  (`attention.py`, currently behind `"spyre_paged"`) which fails on
-  torch_spyre's stick-layout constraints for some shapes.
-- **Custom layer ops**: RMSNorm, RotaryEmbedding, ParallelLMHead all
-  run on CPU. spyre-inference replaces these via vLLM's
-  `register_oot()`; we'd do the same via SGLang's
-  `MultiPlatformOp.register_oot_forward`.
+  (`attention.py`, behind `"spyre_paged"`). That backend now runs and is
+  the fastest mode measured, **but it computes the wrong answer** — it
+  fails greedy parity against CPU, diverging at the first generated token
+  on prompts with unambiguous continuations. Treat its throughput as
+  unusable until the gather is fixed.
+
+  (This was previously attributed to torch_spyre's stick-layout
+  constraints. That was wrong. The crash was a token-count bug in this
+  plugin — extend-mode metadata used the full sequence length where `q`
+  carries only newly-extended tokens, which are equal on a cold prefill
+  and diverge on exactly a RadixCache prefix hit. Fixing that exposed the
+  separate, still-open gather defect above.)
+- **`spyre_paged` correctness**: see above. The `_attn_4d` kernel itself
+  is sound — the CPU-KV modes reproduce CPU SDPA byte-for-byte on
+  unambiguous prompts — so the defect is specific to the paged
+  scatter/gather path.
 - **TP > 1**, **batch > 1**, **dynamic shapes** — none supported.
+- **Nothing beats the CPU baseline yet** on a 1B model at batch 1. See
+  `docs/sglang-vs-vllm.md` §4 for measured numbers and the CPU's terms.
 
 ## Architecture
 

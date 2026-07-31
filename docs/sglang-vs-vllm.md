@@ -30,7 +30,7 @@ The reference points used in this doc:
 | FP8 KV-cache plumbing upstream (scale management, dequant-on-read) | slightly more mature in core | newer, narrower — but on Spyre the KV pool is owned by the plugin anyway, so this gap doesn't carry over |
 | Speculative decoding, multi-LoRA, MoE routing | ✅ More mature | newer, narrower |
 | Encoder-decoder, sliding-window, prefix quant | ✅ Available today | partial |
-| Plugin contract for a new device (less code) | ~3500 lines for `spyre-inference` | ✅ ~1500 lines for this plugin |
+| Plugin contract for a new device (less code) | 2,797 lines for `spyre-inference` | ✅ 1,674 lines for this plugin |
 | Reusable attention base class | interface only | ✅ `TorchNativeAttnBackend` is real |
 | Reusable KV pool | plugin-supplied | ✅ device-agnostic base, override one method |
 | Memory allocator maturity | ✅ Battle-tested, fragmentation-aware | younger; we had to override two methods |
@@ -60,7 +60,9 @@ The two frameworks ask very different things of a device backend:
   extend-vs-decode dispatch, GQA / causal handling. SGLang's
   `TorchNativeAttnBackend` is a real subclass with usable defaults; for
   Spyre we override **only the inner SDPA seam** and inherit the rest.
-  This is roughly two-thirds of the line-count gap between the plugins.
+  This is 446 lines of the gap — the second-largest contributor, behind
+  the absent Worker/ModelRunner layer (483). See §4 for the measured
+  per-component breakdown.
 - **KV pool**: vLLM has no device-agnostic base; the plugin provides
   the whole pool. SGLang's `MHATokenToKVPool` allocates buffers on
   `self.device`, so a Spyre subclass is one method override.
@@ -98,8 +100,11 @@ The two attention layouts optimise for different workload shapes:
 
 **Spyre-specific addendum**: today, even where RadixCache *would* help,
 Spyre's static-shape constraint forces a BMM-against-one-hot for
-runtime indexing — which costs more than the prefix re-transfer it
-saves on small models. The dynamic-shapes refactor (KTIR
+runtime indexing. This doc previously assumed that cost exceeded the
+prefix re-transfer it saves on small models; the 2026-07-26 measurements
+suggest otherwise (mode 1 ran roughly 2× faster than the CPU-KV modes),
+though that mode currently fails greedy parity, so its cost profile is
+not yet trustworthy. See §4. The dynamic-shapes refactor (KTIR
 `construct_indirect_access_tile` lowering) replaces the BMM with real
 `cache[block_table[i]]` indirection and **makes RadixCache prefix hits
 genuinely free on Spyre** for the first time. That is the regime where
@@ -469,13 +474,42 @@ which Spyre toolchain bugs each plugin happens to work around.
 | Custom ops | `register_oot()` | `MultiPlatformOp.register_oot_forward()` |
 | Block-table semantics | `block_table[seq, page] → block_id` (page-size-coupled) | `req_to_token[req, slot] → token_idx` (per-token) |
 | Status | Production, stable | Prototype (this repo) |
-| Lines of plugin code | ~3500 | ~1500 |
+| Lines of plugin code | 2,797 | 1,674 |
 
-The SGLang plugin is roughly half the code. About two-thirds of that
-gap is the attention layer (real base class to subclass vs interface
-to reimplement); the rest is the KV pool reuse and the Worker-class
-absence. **None of that gap closes post-refactor — it's structural to
-the framework contract.**
+Measured 2026-07-26, non-blank lines of Python, plugin code only, no
+tests. The ratio holds under raw line counting too (3,416 vs 2,021),
+so it isn't an artifact of the counting method.
+
+| Component | `spyre-inference` | this plugin | delta |
+|---|---:|---:|---:|
+| Attention | 1,142 | 696 | −446 |
+| Worker + ModelRunner | 483 | 0 | −483 |
+| Custom ops (norm, activation, RoPE, linear) | 516 | 421 | −95 |
+| Platform + registration | 187 | 268 | **+81** |
+| KV pool + allocator | (inside ModelRunner) | 111 | +111 |
+| Init, env, boundary hooks | 163 | 178 | +15 |
+| **Comparable subtotal** | **2,491** | **1,674** | **−817** |
+| Tensor-parallel communicator | 184 | 0 | not implemented here |
+| Parallel LM head | 122 | 0 | not implemented here |
+| **Total** | **2,797** | **1,674** | −1,123 |
+
+Two corrections to the earlier estimate in this doc. First, the largest
+single contributor is **not** the attention layer (446 lines) but the
+absent Worker/ModelRunner layer (483) — a whole category the SGLang
+contract never asks a plugin to supply. Second, 306 lines of the raw gap
+are features this plugin simply doesn't have (TP communicator, on-device
+LM head), which is a missing capability rather than a framework saving.
+On comparable surface the honest figure is **1,674 against 2,491, about a
+third less code** — not the "roughly half" claimed previously.
+
+Note also that the platform layer runs the *other* way: 268 lines against
+187, because SGLang front-loads into the platform object (factories for
+the KV pool, allocator and attention backend, plus device identity and
+registration) what vLLM spreads across a Worker. That is the shape of the
+trade, and at this ratio it is a good one, but it isn't free.
+
+**None of that gap closes post-refactor — it's structural to the
+framework contract.**
 
 ### Spyre-toolchain workarounds (apply equally to both)
 
@@ -521,23 +555,49 @@ choice, not a Spyre toolchain limitation.
 Not benchmarks. Validation that the path runs end-to-end. No claim of
 representativeness for production.
 
-| Mode | `attention_backend` | TPS | What runs on Spyre |
-|---|---|---:|---|
-| 3 | `torch_native` | 19.3 | nothing (CPU baseline) |
-| 2 | `spyre` | 14.8 | `_attn_4d` only; KV on CPU |
-| 1 | `spyre_paged` | wip | `_attn_4d` + KV on device (BMM scatter/gather) |
-| 4 | `spyre` + `SGLANG_FORCE_DEVICE_SPYRE=1` | 3.9 | every Linear, RMSNorm, SiluAndMul, RoPE-residency, attention |
+Re-measured 2026-07-26. All four modes in one sitting on one machine, so
+they are comparable to each other. An earlier revision of this table
+carried numbers of unknown provenance that did not reproduce; every value
+below was taken directly.
 
-The mode-4 number underperforms the baseline because per-op CPU↔Spyre
-transfer dominates compute at hidden=2048. This is the same effect
-spyre-inference observes on small models — moving the body to Spyre
-only wins above hidden=4096+ or longer sequences, or with larger
-batches where the transfer amortises.
+| Mode | `attention_backend` | TPS | ms/tok | Greedy parity vs CPU |
+|---|---|---:|---:|---|
+| 3 | `torch_native` | 37.64 | 26.6 | reference |
+| 2 | `spyre` | 6.13 | 163.2 | ✅ passes (4/5, 0 high-confidence failures) |
+| 4 | `spyre` + `SGLANG_FORCE_DEVICE_SPYRE=1` | 6.56 | 152.4 | ✅ passes (byte-identical to mode 2) |
+| 1 | `spyre_paged` | (12.39) | (80.7) | ❌ **fails** — diverges at first token |
 
-vLLM on the same pod with `spyre-inference` runs Granite-1B at roughly
-12-15 TPS depending on configuration (rough range, taken from
-spyre-inference's own bench harness). Approximately the same ballpark
-as our mode 2.
+**The baseline needs its terms stated** or the table misleads: an
+unconstrained 144-core Xeon 6736P, 1.5 TB RAM, SGLang using one of two
+NUMA nodes, against a single Spyre PF card at batch size one. That is not
+a hardware comparison — it is a correctness reference and a check on
+ordering.
+
+Three findings that overturn earlier claims in this doc:
+
+1. **Mode 4 is the fastest *correct* Spyre mode, not the slowest.** Moving
+   the model body on-device helps (6.56 vs 6.13), which is the direction
+   the design predicts — the residual stream stays resident and the
+   boundary is crossed once per forward rather than once per attention
+   layer. But the gain is 7%, not a step change, and it costs 50% longer
+   model load (143.8 s vs 96.6 s) to place the weights.
+2. **`spyre_paged` is fast and wrong.** It runs at 12.39 TPS, roughly
+   twice either correct mode, which suggests the one-hot BMM gather is
+   *not* the bottleneck this doc previously assumed. But it fails greedy
+   parity: on "The first three prime numbers are" it diverges from CPU at
+   the very first generated token and answers "1, 2, 3, 4, 5…". Its cost
+   profile can't be trusted until the gather is correct, so the numbers
+   are parenthesised.
+3. **`_attn_4d` itself is numerically sound.** Modes 2 and 4 reproduce CPU
+   SDPA byte-for-byte across four prompts with unambiguous continuations.
+   They also produce byte-identical output to each other, which clears the
+   on-device RMSNorm / SiluAndMul / RoPE / Linear paths and localises any
+   residual difference to the attention kernel alone.
+
+No vLLM comparison was taken under these conditions. An earlier revision
+quoted 12–15 TPS for `spyre-inference` from a different machine; that has
+been removed rather than carried forward, since mixing machines is exactly
+what made the original table wrong.
 
 ---
 
@@ -593,11 +653,11 @@ After the refactor:
 **For SGLang**:
 - RadixCache prefix hits become *real* on device — currently the
   prefix-cached path in mode 2 still re-transfers the prefix KV every
-  step because it lives on CPU; in mode 1 the BMM mask rebuild eats
-  the savings. With dynamic shapes + real indirection, neither cost
-  applies. **This is the configuration where SGLang's structural
-  advantage (any-length prefix sharing) translates to actual Spyre TPS
-  gains.**
+  step because it lives on CPU, and mode 1, which would avoid that,
+  does not yet compute the right answer. With dynamic shapes + real
+  indirection, neither the re-transfer nor the one-hot BMM applies.
+  **This is the configuration where SGLang's structural advantage
+  (any-length prefix sharing) translates to actual Spyre TPS gains.**
 - Per-token KV addressing (`req_to_token` instead of block IDs) was
   always a closer fit for indexed-gather lowering than vLLM's block
   layout. Dynamic shapes don't change this; they just make it usable.
@@ -625,10 +685,11 @@ favouring vLLM.
 There isn't a single "right" choice — they optimise for different
 workload shapes. But three structural observations:
 
-1. **The integration cost is lower for SGLang.** ~1500 lines of plugin
-   code vs ~3500, and a real attention base class to subclass instead
-   of an interface to reimplement. That gap doesn't change post-
-   refactor.
+1. **The integration cost is lower for SGLang.** 1,674 lines of plugin
+   code against 2,491 on comparable surface — about a third less — with
+   a real attention base class to subclass instead of an interface to
+   reimplement, and no Worker/ModelRunner layer to supply at all. That
+   gap doesn't change post-refactor.
 2. **The performance ceiling is workload-dependent.** Long shared
    prefixes → SGLang (any-length sharing). High-fanout unique prompts
    → vLLM (mature CB scheduler, serving-feature matrix). Low-precision
