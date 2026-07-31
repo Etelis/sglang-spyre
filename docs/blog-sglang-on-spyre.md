@@ -12,6 +12,14 @@ An 82% prompt cache hit on Granite-1B, with every attention layer's math
 executing on the accelerator. That's SGLang's RadixCache scheduler and Spyre
 compute coexisting end-to-end.
 
+<!-- REVIEW NOTE (remove before publishing): this cached_tokens figure is the
+     one number in this post carried over from the repo (sglang_oot_patches/
+     README.md) rather than re-measured during the 2026-07-26 sweep. It is a
+     deterministic scheduler behaviour rather than a timing, so it is far less
+     environment-sensitive than the TPS figures that did turn out wrong — but
+     re-run tests/test_radix_demo.py and confirm before this ships. -->
+
+
 This post is about what it took, what the framework gave us for free, what it
 didn't, and — since this is a prototype and not a product — what still doesn't
 work.
@@ -37,8 +45,9 @@ It runs in a few configurations, selected by `attention_backend` on
   the Linear layers also execute on Spyre, with the residual stream staying
   resident across the forward pass so the CPU↔Spyre boundary is crossed once
   per forward instead of once per attention layer.
-- **`spyre_paged`** — the KV cache itself living on the device. This is the
-  one that isn't finished; more on that below.
+- **`spyre_paged`** — the KV cache itself living on the device. This one runs,
+  and it's the fastest of the four, but it currently computes the wrong answer.
+  That story is worth telling properly and we come back to it below.
 
 All of them run the same SGLang scheduler, which is the point. The prefix
 sharing above isn't something the backend participates in. SGLang's RadixCache
@@ -172,6 +181,20 @@ import when it can't find libcudart, which SGLang's `try/except ImportError`
 correctly declines to catch. None of these are framework problems, and all of
 them cost real time.
 
+The most expensive one wasn't in either layer. A development pod picked up a
+`torch_spyre` built weeks earlier against a `flex` runtime symbol that had since
+been removed, so every mode died at the first tensor transfer with an
+`undefined symbol` error that looks, at a glance, exactly like a broken plugin.
+
+The reflex is to rebuild, and the reflex is wrong twice over. The source tree
+lived on a volume shared with other people's running jobs, and a matching build
+was already installed elsewhere on the same machine. So the fix was to shadow the
+stale editable install rather than replace it. That works because setuptools
+appends its editable finder to `sys.meta_path`, *behind* the standard
+`PathFinder`, which means an ordinary `PYTHONPATH` entry takes precedence and
+nothing shared has to be touched at all. Worth knowing before you reach for a
+compiler on a machine you share with colleagues.
+
 ## The numbers, honestly
 
 Two things are worth separating here: whether the kernels compute the right
@@ -179,17 +202,21 @@ answer, and how fast they do it. The first result is much better than the
 second.
 
 **Correctness.** Greedy decoding is deterministic, so a correct attention kernel
-has to reproduce the CPU baseline token for token. Across four prompts with
-unambiguous continuations — the capital of France, the freezing point of water,
-the first three primes, and a counting sequence — the Spyre path is byte-identical
-to CPU SDPA for every one of 24 generated tokens. The single prompt that diverges
-is open-ended, and it diverges only after 78 identical characters, at the exact
-point where the model falls into a repetition loop and the top logits are
-effectively tied. That is bf16 rounding changing an argmax where the model has no
-preference, not a masking or bucketing error. Running the same check with the
-model body also on the device gives byte-identical output to the attention-only
-mode, which localises any remaining numerical difference to `_attn_4d` and
-clears the on-device RMSNorm, SiluAndMul, RoPE and Linear paths.
+has to reproduce the CPU baseline token for token. We checked four prompts with
+unambiguous continuations: the capital of France, the freezing point of water,
+the first three primes, and a counting sequence. On all four, the Spyre path is
+byte-identical to CPU SDPA for every one of 24 generated tokens.
+
+One prompt does diverge, and it is the open-ended one. It stays identical for 78
+characters and then splits at exactly the point where the model falls into a
+repetition loop and its top logits are effectively tied. That is bf16 rounding
+changing an argmax where the model has no preference, rather than a masking or
+bucketing error.
+
+Running the same check with the model body also on the device gives output
+byte-identical to the attention-only mode. That clears the on-device RMSNorm,
+SiluAndMul, RoPE and Linear paths, and localises any residual numerical
+difference to `_attn_4d` alone.
 
 **Throughput.** All modes measured in one sitting on one machine — Granite-1B
 (`micro-g3.3-8b-instruct-1b`, 4 layers, 32 query heads over 8 KV heads), 200
@@ -307,15 +334,17 @@ time something underneath changes."
 
 A full serving framework turns out to be a good regression harness, and not
 incidentally. Several of the sharpest bugs we hit were only visible through the
-complete path: the `support_triton` allowlist silently routing the allocator
-into a CUDA-driver-dependent kernel is not something a unit test on the
-attention backend would ever surface, because the allocator isn't part of the
-attention backend. Neither is the memory-pool host import, or the RoPE fallback
-reaching for vLLM. Those are integration failures, and they need an integration
-to find them. Now that SGLang runs end-to-end on the AIU, every change to the
-Spyre stack has a realistic serving workload to be checked against — with real
-scheduling, real cache reuse, and a real request loop — rather than a
-purpose-built script that only exercises what we already thought to test.
+complete path. The `support_triton` allowlist silently routing the allocator into
+a CUDA-driver-dependent kernel is not something a unit test on the attention
+backend would ever surface, because the allocator isn't part of the attention
+backend. Neither is the memory-pool host import, nor the RoPE fallback reaching
+for vLLM. Those are integration failures, and they need an integration to find
+them.
+
+Now that SGLang runs end-to-end on the AIU, every change to the Spyre stack has a
+realistic serving workload to be checked against, with real scheduling, real
+cache reuse and a real request loop. That beats a purpose-built script, which by
+construction only exercises what we already thought to test.
 
 And because the integration rides on entry points and subclassable base
 classes, with four upstreamable patches rather than a fork to reconcile, keeping
@@ -342,6 +371,23 @@ at different things — vLLM's continuous batching scheduler has three more year
 of tuning behind it and a broader serving-feature matrix, and SGLang's
 any-length prefix sharing is the better fit for shared-prompt workloads. The
 useful outcome is having both, and knowing concretely which one to reach for.
+
+It's also worth saying that Spyre isn't the only accelerator walking through this
+particular door. On 30 July 2026, RadixArk and Google
+[announced](https://www.lmsys.org/blog/2026-07-30-sglang-google-tpu)
+`SGL-torchtpu`, bringing SGLang to Google's TPUs, with Radix Cache, quantization,
+speculative decoding and several parallelism strategies on the roadmap.
+
+We learned about that after the work described here was already running, which is
+the reassuring part. Two independent teams reached for the same framework to
+serve on non-GPU silicon at roughly the same moment, which is a decent signal
+that the extension points we leaned on are the ones the ecosystem is converging
+on.
+
+It also changes what to do about the rough edges. If every new backend hits the
+same CUDA-only import and the same Triton assumption, those are worth fixing
+upstream rather than routing around privately. Every backend that follows then
+pays the cost once less.
 
 The code is public, the failure modes are documented, and the gotchas that cost
 us days are written down so they don't cost anyone else the same. If you work on
