@@ -9,7 +9,7 @@ deep, on all four prompts.
 The Spyre run is also six times slower than the CPU it agrees with.
 
 And a third configuration, the one that keeps the KV cache on the accelerator
-where it belongs, is twice as fast as either — and answers that prime-numbers
+where it belongs, runs twice as fast as that — and answers the prime-numbers
 question with "1, 2, 3, 4, 5".
 
 All three of those facts are the point. This post is about what it took to get
@@ -235,17 +235,18 @@ Two things are worth separating here: whether the kernels compute the right
 answer, and how fast they do it. The first result is much better than the
 second.
 
-**Correctness.** Greedy decoding is deterministic, so a correct attention kernel
-has to reproduce the CPU baseline token for token. We checked four prompts with
-unambiguous continuations: the capital of France, the freezing point of water,
-the first three primes, and a counting sequence. On all four, the Spyre path is
-byte-identical to CPU SDPA for every one of 24 generated tokens.
+**Correctness.** The four prompts in the opening were chosen because their
+greedy continuations are unambiguous. Greedy decoding is deterministic, so a
+correct attention kernel has no licence to differ from the CPU baseline by even
+one token — which makes this a cheap, sharp test with no tolerance to argue
+about.
 
-One prompt does diverge, and it is the open-ended one. It stays identical for 78
+A fifth prompt, deliberately open-ended, does diverge. It stays identical for 78
 characters and then splits at exactly the point where the model falls into a
 repetition loop and its top logits are effectively tied. That is bf16 rounding
 changing an argmax where the model has no preference, rather than a masking or
-bucketing error.
+bucketing error — and it is why the fifth prompt is in the set at all. A check
+that only ever agrees isn't telling you much.
 
 Running the same check with the model body also on the device gives output
 byte-identical to the attention-only mode. That clears the on-device RMSNorm,
@@ -253,13 +254,15 @@ SiluAndMul, RoPE and Linear paths, and localises any residual numerical
 difference to `_attn_4d` alone.
 
 If you are bringing a framework up on new silicon, this check is cheap and we'd
-recommend it early — but with one trap worth naming, because we fell into it.
-The verdict has to key on *which* prompts diverge, not how many. Our first
-comparator just counted matches, and it cheerfully reported a pass for a backend
-that was answering "the first three prime numbers are" with "1, 2, 3, 4, 5". A
-divergence on an unambiguous prompt is a defect; a divergence on an open-ended
-one, where the top logits are tied, is expected bf16 noise. Score them the same
-way and the harness will tell you exactly what you want to hear.
+recommend it early — with one trap worth naming, because we fell into it. The
+verdict has to key on *which* prompts diverge, not how many. Our first
+comparator reasoned from counts alone: all matched meant pass, none matched
+meant broken, and anything in between it called benign rounding noise. So when
+the paged backend scored three out of five, the harness reported bf16 noise —
+even though one of the two failures was a prompt with a right answer, missed at
+the very first token. A divergence on an unambiguous prompt is a defect; a
+divergence on the open-ended one is expected. Score them alike and the harness
+will confirm whatever you hoped.
 
 **Throughput.** All modes measured in one sitting on one machine — Granite-1B
 (`micro-g3.3-8b-instruct-1b`, 4 layers, 32 query heads over 8 KV heads), 200
