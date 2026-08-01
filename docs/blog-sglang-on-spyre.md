@@ -169,9 +169,28 @@ backend, plus device identity and backend registration. That's the shape of the
 trade, and at this ratio we'd take it every time, but it isn't free.
 
 We also deleted code we'd written. An early version had a hand-rolled
-`SpyreEagerGraphRunner`, until we found that SGLang core sets
-`graph_runner = None` on its own when `support_cuda_graph()` returns `False`.
-The right amount of code for that problem was zero.
+`SpyreEagerGraphRunner`, until we found that SGLang core handles it. The right
+amount of code for that problem was zero.
+
+What's in core is more pointed than a lucky default. At the version we targeted,
+`model_runner.py` reads:
+
+```python
+elif current_platform.is_out_of_tree():
+    self.init_attention_backend()
+    if current_platform.support_cuda_graph():
+        self.init_device_graphs()
+    else:
+        self.graph_runner = None
+        self.graph_mem_usage = 0
+```
+
+An explicit branch for out-of-tree platforms, sitting beside the CUDA and ROCm
+paths, that quietly does the right thing for a device with no graph capture.
+`is_out_of_tree()` is consulted at three separate points in that one file. This
+is the difference between a framework that *tolerates* a new backend and one
+that has a concept for it: somebody wrote that branch before we arrived, for a
+device they had never seen.
 
 One more structural detail that matters on this hardware: SGLang addresses the
 KV cache per token (`req_to_token[req, slot] → token_idx`) where vLLM addresses
