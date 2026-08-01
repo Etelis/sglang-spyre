@@ -48,15 +48,21 @@ that share a 51-token system prompt and the scheduler reports:
 cached_tokens = [0, 51, 50, 51]
 ```
 
-The first request pays for the prefix and the next three don't — an 82% prompt
-cache hit, on an accelerator that has no idea any of this is happening.
+The first request pays for the 51-token prefix; the next three are handed it for
+free, on an accelerator that has no idea any of this is happening.
 
-<!-- REVIEW NOTE (remove before publishing): this cached_tokens figure is the
-     one number in this post carried over from the repo (sglang_oot_patches/
-     README.md) rather than re-measured during the 2026-07-26 sweep. It is a
-     deterministic scheduler behaviour rather than a timing, so it is far less
-     environment-sensitive than the TPS figures that did turn out wrong — but
-     re-run tests/test_radix_demo.py and confirm before this ships. -->
+<!-- REVIEW NOTE (remove before publishing): two things to settle here.
+     (1) This cached_tokens array is the one figure in the post carried over
+     from the repo (sglang_oot_patches/README.md) rather than re-measured in
+     the 2026-07-26 sweep. Re-run tests/test_radix_demo.py to confirm.
+     (2) The repo also reports this as an "82% prompt cache hit", and that
+     percentage does NOT reconcile with the array under the obvious reading:
+     152 cached tokens over four prompts that must each be >= 51 tokens is at
+     most 152/204 = 74.5%. It only reaches 82% if the denominator excludes the
+     cold first request (152/186 = 81.7%). The bare percentage has been left
+     out of the prose deliberately — a reader can do that division in ten
+     seconds. Work out which definition SGLang is reporting before quoting any
+     percentage. -->
 
 That last part is the design worth noticing. Prefix sharing is not something the
 backend participates in. SGLang's RadixCache lives in the scheduler proper,

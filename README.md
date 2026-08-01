@@ -41,7 +41,14 @@ path; mode 3 is the apples-to-apples baseline.
   guard, optional vllm._custom_ops in rotary_embedding, support_triton
   exclusion). Replaces hand-edits in the SGLang clone.
 - **RadixCache prefix sharing**: 4 prompts sharing a 51-token prefix
-  show `cached_tokens=51` on requests 2-4 (~82% prompt cache hit).
+  show `cached_tokens=51` on requests 2-4.
+  (The "~82% prompt cache hit" previously quoted here needs its denominator
+  pinned down before being requoted: `cached_tokens = [0, 51, 50, 51]` is 152
+  cached tokens, and four prompts that each contain the 51-token prefix total
+  at least 204, giving at most 74.5%. 82% only follows if the cold first
+  request is excluded from the denominator — 152/186 = 81.7%. The token array
+  itself is unambiguous; the percentage depends on a definition worth
+  confirming.)
 - **TPS-equivalent bench**: matches the structure of the vLLM
   `spyre_tps_bench.py` for apples-to-apples timing.
 
