@@ -295,8 +295,9 @@ second.
 **Correctness.** The four prompts in the opening were chosen because their
 greedy continuations are unambiguous. Greedy decoding is deterministic, so a
 correct attention kernel has no licence to differ from the CPU baseline by even
-one token — which makes this a cheap, sharp test with no tolerance to argue
-about.
+one token — a cheap, sharp test with no tolerance to argue about. Both working
+Spyre modes pass it: 24 generated tokens per prompt, byte-identical to CPU SDPA,
+on all four.
 
 A fifth prompt, deliberately open-ended, does diverge. It stays identical for 78
 characters and then splits at exactly the point where the model falls into a
