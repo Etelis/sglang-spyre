@@ -162,11 +162,13 @@ pool and allocator are 111 lines that vLLM appears to spend nothing on — but
 only because vLLM's equivalent is buried inside that 483-line ModelRunner
 rather than being free. Having it as a separate, subclassable
 `MHATokenToKVPool` is what makes device-resident KV a contained change instead
-of a rewrite. And our platform layer is genuinely bigger, 268 lines against
-187, because SGLang front-loads into the platform object what vLLM spreads
-across a Worker: factories for the KV pool, the allocator and the attention
-backend, plus device identity and backend registration. That's the shape of the
-trade, and at this ratio we'd take it every time, but it isn't free.
+of a rewrite.
+
+Our platform layer is genuinely bigger too, 268 lines against 187, because
+SGLang front-loads into the platform object what vLLM spreads across a Worker:
+factories for the KV pool, the allocator and the attention backend, plus device
+identity and registration. That's the shape of the trade. At this ratio we'd
+take it every time, but it isn't free.
 
 We also deleted code we'd written. An early version had a hand-rolled
 `SpyreEagerGraphRunner`, until we found that SGLang core handles it. The right
@@ -310,14 +312,15 @@ difference to `_attn_4d` alone.
 
 If you are bringing a framework up on new silicon, this check is cheap and we'd
 recommend it early — with one trap worth naming, because we fell into it. The
-verdict has to key on *which* prompts diverge, not how many. Our first
-comparator reasoned from counts alone: all matched meant pass, none matched
-meant broken, and anything in between it called benign rounding noise. So when
-the paged backend scored three out of five, the harness reported bf16 noise —
-even though one of the two failures was a prompt with a right answer, missed at
-the very first token. A divergence on an unambiguous prompt is a defect; a
-divergence on the open-ended one is expected. Score them alike and the harness
-will confirm whatever you hoped.
+verdict has to key on *which* prompts diverge, not how many.
+
+Our first comparator reasoned from counts alone: all matched meant pass, none
+matched meant broken, and anything between was called benign rounding noise. So
+when the paged backend scored three out of five, the harness duly reported bf16
+noise — even though one of the two failures was a prompt with a right answer,
+missed at the very first token. A divergence on an unambiguous prompt is a
+defect; one on the open-ended prompt is expected. Score them alike and the
+harness will confirm whatever you hoped.
 
 **Throughput.** All modes measured in one sitting on one machine — Granite-1B
 (`micro-g3.3-8b-instruct-1b`, 4 layers, 32 query heads over 8 KV heads), 200
@@ -345,14 +348,15 @@ short of what that reasoning implies, and it costs 50% longer model load
 (143.8 s against 96.6 s) to place the weights.
 
 The `spyre_paged` row is parenthesised because it is not a result. That mode
-keeps the KV cache on the device, and it does run at 12.39 TPS — twice either
-working mode, which is what the design predicts, since a prefix hit then avoids
-re-transfer as well as recompute. But it fails the parity check: on "The first
-three prime numbers are" it diverges from CPU at the very first generated token
-and answers "1, 2, 3, 4, 5…". Both correct modes get that prompt right. So the
-number is real and the answer is wrong, and a wrong answer arriving twice as
-fast is not a speedup. We are reporting it only to be clear about what is and
-isn't established.
+keeps the KV cache on the device and runs at 12.39 TPS — twice either working
+mode, exactly as the design predicts, since a prefix hit then avoids re-transfer
+as well as recompute.
+
+But it fails the parity check. On "The first three prime numbers are" it diverges
+from CPU at the very first generated token and answers "1, 2, 3, 4, 5…", where
+both correct modes get that prompt right. The number is real and the answer is
+wrong, and a wrong answer arriving twice as fast is not a speedup. We report it
+only to be clear about what is and isn't established.
 
 That path taught us something about our own documentation, too. It had been
 recorded as blocked on the Spyre toolchain's stick-layout constraints. It
