@@ -53,7 +53,7 @@
 <text class="val" x="549" y="190">200 of 200</text>
 <text class="note" x="180" y="218">The partial tail block does not count — 8 tokens re-prefilled every request.</text>
 <line class="gl" x1="20" y1="242" x2="680" y2="242"/>
-<text class="grp" x="20" y="266">The measured case — 51-token shared prefix, one cell per token</text>
+<text class="grp" x="20" y="266">A real shared prefix — 51 tokens, one cell per token</text>
 <text class="cat" x="20" y="292">vLLM</text>
 <rect class="a" x="180" y="279" width="335" height="16" rx="2"/>
 <rect class="trk" x="516" y="279" width="20" height="16" rx="2"/>
@@ -166,6 +166,6 @@
 <rect class="gap" x="529.0" y="336" width="1" height="16"/>
 <text class="val" x="549" y="349">51 of 51</text>
 <text class="note" x="180" y="376">No block structure to round down to.</text>
-<text class="note" x="20" y="408">Measured on Granite-1B: four prompts sharing a 51-token prefix reported</text>
-<text class="note" x="20" y="426">cached_tokens = [0, 51, 50, 51] — an 82% prompt cache hit.</text>
+<text class="note" x="20" y="408">On Granite-1B, four prompts sharing a 51-token prefix report cached_tokens = [0, 51, 50, 51]:</text>
+<text class="note" x="20" y="426">the first request pays for the prefix, the next three are handed it.</text>
 </svg>

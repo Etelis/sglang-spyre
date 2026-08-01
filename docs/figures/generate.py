@@ -218,8 +218,8 @@ def figure2(theme):
     # ---- panel 2: 51 tokens, one cell each ----
     n2, h2, pitch = 51, 16, 7
     shared2 = (n2 // BLOCK) * BLOCK          # 48
-    o.append('<text class="grp" x="20" y="266">The measured case — 51-token shared '
-             'prefix, one cell per token</text>')
+    o.append('<text class="grp" x="20" y="266">A real shared prefix — 51 tokens, '
+             'one cell per token</text>')
 
     def cells(y, n_shared, cls, n_total):
         # One fill, then surface gaps cut it into per-token cells.
@@ -252,10 +252,14 @@ def figure2(theme):
     o.append(f'<text class="note" x="{SX}" y="376">No block structure to round '
              'down to.</text>')
 
-    o.append('<text class="note" x="20" y="408">Measured on Granite-1B: four prompts '
-             'sharing a 51-token prefix reported</text>')
-    o.append('<text class="note" x="20" y="426">cached_tokens = [0, 51, 50, 51] — an '
-             '82% prompt cache hit.</text>')
+    # No hit-rate percentage here: cached_tokens = [0, 51, 50, 51] is 152 cached
+    # tokens, and four prompts each containing the 51-token prefix total >= 204,
+    # so the repo's "82%" needs its denominator stated. The array is unambiguous
+    # on its own, so the figure quotes that and nothing derived from it.
+    o.append('<text class="note" x="20" y="408">On Granite-1B, four prompts sharing '
+             'a 51-token prefix report cached_tokens = [0, 51, 50, 51]:</text>')
+    o.append('<text class="note" x="20" y="426">the first request pays for the '
+             'prefix, the next three are handed it.</text>')
     o.append("</svg>")
     return "\n".join(o)
 
