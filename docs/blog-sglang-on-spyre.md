@@ -243,9 +243,18 @@ platform it is talking to.
 
 Only `support_triton()` still returns `backend not in ["torch_native",
 "intel_amx"]`, so a non-Triton out-of-tree backend is still assumed
-Triton-capable and gets routed into a kernel it can't run. That one is a
-genuine, isolated upstreaming opportunity, and it's the patch we'd take
-upstream first.
+Triton-capable and gets routed into a kernel it can't run — surfacing as
+`RuntimeError: 0 active drivers` from inside the KV-cache allocator, a good
+distance from anything the backend author wrote.
+
+That one is a genuine, isolated upstreaming opportunity, so we've written it up
+as a proposal rather than just complaining about it:
+[`sglang_oot_patches/upstream/`](../sglang_oot_patches/upstream/support-triton-platform-predicate.md).
+The shape follows the three fixes above — make Triton capability a platform
+predicate next to the existing `support_cuda_graph()`, defaulting out-of-tree
+platforms to `False` and letting one with Triton opt back in. In-tree behaviour
+is unchanged. Our current patch adds `"spyre"` to a list, which fixes one device
+rather than the category; this fixes the category.
 
 None of this was on our account — we hadn't filed anything. It happened because
 SGLang is actively growing out-of-tree support while we were building on it,
