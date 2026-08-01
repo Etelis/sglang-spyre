@@ -76,7 +76,10 @@ The two frameworks ask very different things of a device backend:
   places; we ship four small idempotent patches in
   `sglang_oot_patches/apply.py` (memory_pool_host CUDA-only guard, vllm
   optional import in rotary base, support_triton allowlist,
-  SUPPORTED_DEVICES whitelist). All upstreamable.
+  SUPPORTED_DEVICES whitelist). All upstreamable — and as of a main-line
+  checkout two weeks after `v0.5.12.post1`, three of the four are already
+  fixed upstream via `current_platform.is_out_of_tree()` checks. Only the
+  `support_triton` allowlist remains.
 
 The bottom line on integration: **vLLM has a higher floor of plugin
 machinery you must implement; SGLang has a lower floor but requires
@@ -530,7 +533,7 @@ Most of these go away with the dynamic-shapes refactor (see §5).
 | `num_seqs == 1` hard-coded in attention backends | Continuous batching unsupported on the device side | **fixed by the refactor** |
 | BMM-against-one-hot scatter/gather (mode 1 / `SpyreAttentionExpBackend`) | Replaces unsupported runtime tensor indexing | **fixed by the refactor** (KTIR `construct_indirect_access_tile` lowering replaces the BMM with real `cache[block_table[i]]` indirection) |
 | Triton allocator override (SGLang `alloc_extend`/`alloc_decode` for `page_size > 1`) | Stock allocator dispatches Triton; no Spyre Triton backend | possibly fixed if SGLang adopts a torch-native fallback path; orthogonal to the Spyre refactor |
-| Four small SGLang core patches in `sglang_oot_patches/apply.py` (CUDA-only guard in `memory_pool_host`, optional `vllm._custom_ops` in rotary base, `support_triton` allowlist, `SUPPORTED_DEVICES` whitelist) | Teaches SGLang that an OOT, non-Triton, non-CUDA device is a real thing | likely upstreamable to SGLang independently of the Spyre refactor; not a permanent SGLang-specific cost |
+| Four small SGLang core patches in `sglang_oot_patches/apply.py` (CUDA-only guard in `memory_pool_host`, optional `vllm._custom_ops` in rotary base, `support_triton` allowlist, `SUPPORTED_DEVICES` whitelist) | Teaches SGLang that an OOT, non-Triton, non-CUDA device is a real thing | **three of four already fixed upstream** on a main-line checkout ~2 weeks after `v0.5.12.post1`, each via `current_platform.is_out_of_tree()`; only `support_triton` remains, and it is the one to take upstream |
 
 The SGLang core patches are the only entry on this list that is
 SGLang-specific. They aren't a Spyre-toolchain issue at all — they're

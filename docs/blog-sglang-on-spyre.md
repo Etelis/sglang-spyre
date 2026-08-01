@@ -223,12 +223,33 @@ exist:
 4. `SUPPORTED_DEVICES` is a whitelist that rejects anything unlisted, so
    `device="spyre"` raises at the first `load_model`. Fix: add it.
 
-That's four one-line changes, all upstreamable, none of them Spyre-specific in
-substance — they're SGLang out-of-tree readiness gaps that the next new backend
-would hit too. We'd rather report that accurately than claim a zero-friction
-integration, because "we needed four one-line fixes and all four belong
-upstream" is a stronger statement about API quality than "we needed nothing"
-would be.
+That's four one-line changes, none of them Spyre-specific in substance — they're
+SGLang out-of-tree readiness gaps that the next new backend would hit too. We'd
+rather report that accurately than claim a zero-friction integration, because
+"we needed four one-line fixes and all four belong upstream" is a stronger
+statement about API quality than "we needed nothing" would be.
+
+And then something better happened, which we only noticed while fact-checking
+this post. Three of those four are already fixed upstream.
+
+We pinned to `v0.5.12.post1`, where all four gaps are present exactly as
+described. On a main-line checkout a couple of weeks later, `memory_pool_host`
+guards on `_is_cuda or _is_hip`, the rotary base excludes out-of-tree platforms
+from the vLLM-kernel path with `and not (current_platform.is_out_of_tree())`,
+and `device_config` reads `if device in SUPPORTED_DEVICES or
+current_platform.is_out_of_tree()`. Each of those is a better fix than ours: we
+added `"spyre"` to a list, upstream taught the check to ask what kind of
+platform it is talking to.
+
+Only `support_triton()` still returns `backend not in ["torch_native",
+"intel_amx"]`, so a non-Triton out-of-tree backend is still assumed
+Triton-capable and gets routed into a kernel it can't run. That one is a
+genuine, isolated upstreaming opportunity, and it's the patch we'd take
+upstream first.
+
+None of this was on our account — we hadn't filed anything. It happened because
+SGLang is actively growing out-of-tree support while we were building on it,
+which is a more useful thing to know about a framework than any line count.
 
 Beneath the framework layer, the device had its own opinions. `libspyre_comms.so`
 reads `RANK`, `WORLD_SIZE`, `LOCAL_RANK` and `LOCAL_WORLD_SIZE` at dlopen time;
@@ -418,7 +439,8 @@ cache reuse and a real request loop. That beats a purpose-built script, which by
 construction only exercises what we already thought to test.
 
 And because the integration rides on entry points and subclassable base
-classes, with four upstreamable patches rather than a fork to reconcile, keeping
+classes, with a handful of upstreamable patches rather than a fork to reconcile —
+three of which upstream has since closed on its own — keeping
 it current is cheap. That was the actual reason to be careful about *how* we
 integrated, more than the line count.
 
