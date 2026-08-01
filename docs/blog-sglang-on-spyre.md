@@ -38,8 +38,9 @@ It runs in a few configurations, selected by `attention_backend` on
   resident across the forward pass so the CPU↔Spyre boundary is crossed once
   per forward instead of once per attention layer.
 - **`spyre_paged`** — the KV cache itself living on the device. This one runs,
-  and it's the fastest of the four, but it currently computes the wrong answer.
-  That story is worth telling properly and we come back to it below.
+  and it's the fastest of the three Spyre modes, but it currently computes the
+  wrong answer. That story is worth telling properly and we come back to it
+  below.
 
 All of them run the same SGLang scheduler, which is the point. Send four prompts
 that share a 51-token system prompt and the scheduler reports:
@@ -397,10 +398,10 @@ compiled graph. Runtime tensor indexing isn't expressible, so the on-device KV
 path has to fake it — build an `[N_blocks, block_size, num_blocks]` one-hot
 tensor on CPU, transfer it, and use a batched matmul as a runtime-indexable
 gather. That's what `spyre_paged` does. Interestingly, the measurement above
-suggests the one-hot BMM is *not* the bottleneck we assumed — that path is the
-fastest of the three once it runs — but it is also the one that currently
+suggests the one-hot BMM is *not* the bottleneck we had assumed — of the three
+Spyre modes it is the fastest, once it runs at all — but it is also the one that
 computes the wrong answer, so its cost profile shouldn't be trusted until the
-gather is correct.
+gather is fixed.
 
 The dynamic-shapes refactor underway in the Spyre toolchain addresses exactly
 this. Variable-length attention without bucketing, `num_seqs > 1`, and — the
@@ -425,8 +426,12 @@ same tail is given up by every request that shares the prefix, and the shortfall
 grows with how badly the prefix length misses a block boundary. For RAG with
 shared templates, multi-turn chat, and agent flows with long tool prompts —
 workloads where prefix lengths are set by application code and have no reason to
-land on multiples of sixteen — that's the lever. It just needs the KV cache to
-actually live on the device for the saving to be real.
+land on multiples of sixteen — that's the lever.
+
+What it needs is a *correct* on-device KV path. The cache already lives on the
+device in `spyre_paged`, and that mode is already the fastest of the Spyre
+modes; what stands between it and a real result is the gather defect, not the
+architecture.
 
 ## The part that outlasts the numbers
 
