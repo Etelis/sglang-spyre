@@ -105,11 +105,17 @@ for svg in sorted(FIGURES.glob("*.svg")):
     check(f"82% absent from {svg.name}", "82%" not in svg.read_text())
 
 # ------------------------------------------------ 5. the blog stays a narrative
-# The post is an enablement piece; measurements belong in the comparison doc,
-# where the checks above guard them. The lmsys URL contains a date, so skip it.
+# The post is an announcement piece; measurements belong in the comparison doc,
+# where the checks above guard them. Skip the dateline and any URL — a date is
+# not a claim about performance.
 print("\n[5] the blog carries no performance figures")
-digits = re.findall(r"\b\d+(?:[.,]\d+)?\b",
-                    "\n".join(l for l in blog.splitlines() if "lmsys.org" not in l))
+prose = [
+    l for l in blog.splitlines()
+    if "http" not in l and not re.match(r"\s*\*?[A-Z][a-z]+ \d{1,2}, \d{4}\*?\s*$", l)
+]
+# No word boundaries here: performance claims attach digits to letters ("6x",
+# "10ms", "2.5x"), and \b\d+\b silently skips every one of them.
+digits = re.findall(r"\d+(?:[.,]\d+)?\w*", "\n".join(prose))
 check("blog prose is free of numeric claims", not digits, f"found {digits[:5]}")
 
 # --------------------------------------------------------------------- verdict
