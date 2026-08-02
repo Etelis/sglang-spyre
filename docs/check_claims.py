@@ -113,9 +113,13 @@ prose = [
     l for l in blog.splitlines()
     if "http" not in l and not re.match(r"\s*\*?[A-Z][a-z]+ \d{1,2}, \d{4}\*?\s*$", l)
 ]
-# No word boundaries here: performance claims attach digits to letters ("6x",
-# "10ms", "2.5x"), and \b\d+\b silently skips every one of them.
-digits = re.findall(r"\d+(?:[.,]\d+)?\w*", "\n".join(prose))
+# No trailing word boundary: performance claims attach digits to letters ("6x",
+# "10ms", "2.5x"), and \b\d+\b silently skips every one of them. But do require
+# the digit not to follow a letter, so format names like BF16, FP8 and INT4 —
+# which are identifiers, not measurements — do not trip the check.
+# The lookbehind must exclude digits as well as letters. Excluding only letters
+# blocks the match at the "1" of BF16 and then happily matches the "6".
+digits = re.findall(r"(?<![A-Za-z0-9])\d+(?:[.,]\d+)?\w*", "\n".join(prose))
 check("blog prose is free of numeric claims", not digits, f"found {digits[:5]}")
 
 # --------------------------------------------------------------------- verdict
