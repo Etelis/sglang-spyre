@@ -108,10 +108,16 @@ class SpyreAttentionBackend(AttentionBackend):
         max_seq_len = int(seq_lens.max().item()) if len(seq_lens) > 0 else 0
         max_query_len = 1 if forward_batch.forward_mode.is_decode() else max_seq_len
 
-        # num_actual_tokens = total tokens in this forward step.
-        # Decode: 1 per sequence; Extend: full prefill length per sequence.
+        # num_actual_tokens = tokens actually carried by q/k/v this step.
+        # Decode: 1 per sequence. Extend: only the *newly extended* tokens —
+        # not seq_lens.sum(), which is the full sequence length. The two are
+        # equal on a cold prefill but diverge on any RadixCache prefix hit,
+        # where the cached prefix is already in the pool and q holds just the
+        # uncached tail.
         if forward_batch.forward_mode.is_decode():
             state.num_actual_tokens = forward_batch.batch_size
+        elif forward_batch.extend_num_tokens is not None:
+            state.num_actual_tokens = int(forward_batch.extend_num_tokens)
         else:
             state.num_actual_tokens = int(seq_lens.sum().item())
 
