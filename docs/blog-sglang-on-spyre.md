@@ -8,38 +8,33 @@ SGLang now runs on the IBM Spyre AIU, giving developers another hardware choice
 for serving models with the same API and the same features they already use.
 
 Spyre is IBM's accelerator for enterprise inference, shipping in IBM Z, LinuxONE
-and Power systems. Support for it lands as an out-of-tree SGLang platform plugin:
-SGLang discovers it at startup through the standard platform entry point and
-treats the AIU as a device it knows how to target, with no fork of SGLang and no
-vendored copy of the framework.
+and Power systems. It is a dataflow architecture rather than a GPU: kernels are
+compiled ahead of time for statically known shapes, there is no Triton and no
+CUDA-style runtime beneath it, and the device is driven through PyTorch by IBM's
+`torch-spyre` backend. Support lands as an out-of-tree SGLang platform plugin,
+discovered at startup through the standard platform entry point, with no fork of
+SGLang and no vendored copy of the framework.
 
-Developers can serve models on Spyre today through the usual `sgl.Engine` API,
-with SGLang's scheduler, request handling and sampling running unchanged.
-Attention executes on the accelerator in BF16 — the query-key product, the softmax
-and the value product. The model body can run there too: RMSNorm, SiLU and GeLU,
-rotary embeddings and the linear layers all have Spyre implementations registered
-through SGLang's multi-platform op dispatch, with the residual stream staying
-resident on the device across the forward pass rather than returning to the host
-between layers. The KV cache can live on the accelerator as well, in a paged pool
-backed by a torch-native allocator that pulls in no Triton dependency. Two
-attention backends are selectable: `spyre` keeps the cache in SGLang's pool, and
-`spyre_paged` moves it onto the device.
+Models are served through the usual `sgl.Engine` API, with the scheduler, request
+handling and sampling running unchanged. RadixCache prefix sharing works, and
+needed no Spyre-specific code — the scheduler resolves the hit before the forward
+is assembled, so it never becomes the backend's problem. Attention executes on the
+accelerator in BF16 against IBM's kernels, which take four-dimensional inputs with
+query and key/value lengths padded up to fixed bucket sizes; the plugin's job at
+that seam is bucketing and shape bookkeeping, sitting inside SGLang's torch-native
+attention backend. The model body can run on the device as well — RMSNorm, SiLU
+and GeLU, rotary embeddings and the linear layers, registered through the
+multi-platform op dispatch — with the residual stream staying resident across the
+forward pass rather than returning to the host between layers. The KV cache can
+live on the accelerator too, in a paged pool with a torch-native allocator, since
+the Triton path the stock allocator reaches for has nothing to run on here.
 
-RadixCache prefix sharing works on Spyre, and it needed no device-specific code —
-which says something about where SGLang draws its abstraction line. Prefix
-matching happens in the scheduler, not the backend: a request's tokens are looked
-up in a radix tree, the longest cached prefix is resolved to the KV slots already
-holding its keys and values, and all of that finishes before the forward pass is
-assembled. What reaches the attention backend is a table of positions to physical
-slots with the hit already encoded, so a prefix hit is simply work that never
-arrives at the device. SGLang also indexes that cache per token rather than in
-fixed-size blocks, which means no page size leaks down into device kernels — a
-useful property on hardware like Spyre, whose attention kernels want statically
-shaped, bucketed inputs.
-
-Work continues on continuous batching and larger batch sizes, tensor parallelism,
-dynamic shapes as the Spyre compiler adds support for them, the low-precision
-formats the AIU handles natively, and broader model coverage.
+Because shapes are static, each distinct bucket compiles its own graph, so a warm
+process matters more on Spyre than on a GPU. That constraint is also what the next
+round of work is aimed at: the Spyre compiler is gaining dynamic shapes, which
+brings variable-length attention and real indexed gathers into reach, and with
+them continuous batching and batch sizes above one. Tensor parallelism, the
+low-precision formats the AIU handles natively, and broader model coverage follow.
 
 > *[Quote from IBM Spyre leadership — needs real attribution before publication]*
 
