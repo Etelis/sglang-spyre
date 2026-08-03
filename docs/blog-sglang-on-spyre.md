@@ -36,12 +36,5 @@ brings variable-length attention and real indexed gathers into reach, and with
 them continuous batching and batch sizes above one. Tensor parallelism, the
 low-precision formats the AIU handles natively, and broader model coverage follow.
 
-> *[Quote from IBM Spyre leadership — needs real attribution before publication]*
-
-> *[Quote from the SGLang team — needs real attribution before publication]*
-
 The plugin is developed in the open and available today at
 [github.com/torch-spyre/sglang-spyre](https://github.com/torch-spyre/sglang-spyre).
-
-The SGL family always welcomes new contributors to help build an open,
-high-performance serving engine together!
