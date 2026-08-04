@@ -8,12 +8,13 @@ SGLang now runs on the IBM Spyre AIU, giving developers another hardware choice
 for serving models with the same API and the same features they already use.
 
 Spyre is IBM's accelerator for enterprise inference, shipping in IBM Z, LinuxONE
-and Power systems. It is a dataflow architecture rather than a GPU: kernels are
-compiled ahead of time for statically known shapes, there is no Triton and no
-CUDA-style runtime beneath it, and the device is driven through PyTorch by IBM's
-`torch-spyre` backend. Support lands as an out-of-tree SGLang platform plugin,
-discovered at startup through the standard platform entry point, with no fork of
-SGLang and no vendored copy of the framework.
+and Power systems. It is a dataflow architecture rather than a GPU, and the
+device is driven through PyTorch by IBM's `torch-spyre` backend. In the stack as
+it stands today, kernels are compiled ahead of time for statically known shapes
+and there is no Triton path — both properties of the current software stack
+rather than of the accelerator itself. Support lands as an out-of-tree SGLang
+platform plugin, discovered at startup through the standard platform entry point,
+with no fork of SGLang and no vendored copy of the framework.
 
 Models are served through the usual `sgl.Engine` API, with the scheduler, request
 handling and sampling running unchanged. RadixCache prefix sharing works, and
