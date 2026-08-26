@@ -1,74 +1,75 @@
 #!/usr/bin/env python3
-"""Apply the four SGLang OOT-compatibility patches needed for the Spyre backend.
+"""Apply the SGLang 0.5.18 compatibility patch needed by the Spyre backend.
 
-These teach SGLang core that an out-of-tree (OOT) device like Spyre is not CUDA
-and not Triton-capable, so it skips CUDA `sgl_kernel`, the vLLM RoPE kernel, and
-the Triton req->token writer, and accepts "spyre" as a supported device.
-Idempotent: already-patched files are skipped.
+SGLang 0.5.18 already handles OOT device admission, CPU-safe host-cache
+imports, and native RoPE fallback.  Its global ``support_triton`` helper still
+treats unknown attention backends as Triton-capable, so exclude the two Spyre
+backend names. Idempotent: an already-patched file is skipped.
 
 Run inside the venv where sglang is installed:
     python sglang_oot_patches/apply.py
 """
+
 from __future__ import annotations
 
+import json
 import os
-import sys
+from importlib.metadata import distribution
+from urllib.parse import unquote, urlparse
 
 
 def _sglang_srt_dir() -> str:
-    # sglang.srt may be a namespace package whose __file__ is None; resolve via
-    # a concrete submodule that always has a real path. We want the srt/ dir
-    # (patch paths are relative to srt/, not the outer sglang/).
-    import sglang.srt.configs.device_config as _probe
-
-    # _probe.__file__ -> .../sglang/srt/configs/device_config.py
-    # we want         -> .../sglang/srt/
-    return os.path.dirname(os.path.dirname(_probe.__file__))
+    # Locate the distribution without importing SGLang: its top-level import
+    # requires optional CUDA/Triton and torchvision modules before this
+    # compatibility patch has had a chance to run.
+    dist = distribution("sglang")
+    direct_url = dist.read_text("direct_url.json")
+    if direct_url:
+        source_url = json.loads(direct_url).get("url", "")
+        parsed = urlparse(source_url)
+        if parsed.scheme == "file":
+            editable_root = unquote(parsed.path)
+            candidate = os.path.join(editable_root, "sglang", "srt")
+            if os.path.isdir(candidate):
+                return candidate
+    return os.fspath(dist.locate_file("sglang/srt"))
 
 
 PATCHES = [
     # (relative path, old, new)
     (
-        "mem_cache/memory_pool_host.py",
-        "if not (_is_npu or _is_xpu or _is_mps):",
-        "if not (_is_npu or _is_xpu or _is_mps) and _is_cuda:  # OOT/Spyre: skip CUDA sgl_kernel",
-    ),
-    (
-        "layers/rotary_embedding/base.py",
-        (
-            "            else:\n"
-            "                from vllm._custom_ops import rotary_embedding\n"
-            "\n"
-            "            self.use_fallback_kernel = True\n"
-            "            self.fallback_rotary_embedding = rotary_embedding"
-        ),
-        (
-            "            else:\n"
-            "                try:\n"
-            "                    from vllm._custom_ops import rotary_embedding\n"
-            "                except ImportError:\n"
-            "                    # OOT/Spyre: no vllm kernels — use the torch-native RoPE.\n"
-            "                    rotary_embedding = None\n"
-            "\n"
-            "            if rotary_embedding is None:\n"
-            "                self.use_fallback_kernel = False\n"
-            "            else:\n"
-            "                self.use_fallback_kernel = True\n"
-            "                self.fallback_rotary_embedding = rotary_embedding"
-        ),
-    ),
-    (
         "utils/common.py",
         'return backend not in ["torch_native", "intel_amx"]',
         'return backend not in ["torch_native", "intel_amx", "spyre", "spyre_paged"]',
     ),
-    # 4. configs/device_config.py — the device whitelist rejects any device not
-    #    in SUPPORTED_DEVICES, so device="spyre" raises at the first load_model
-    #    step. Allow OOT devices so the model body can be materialised on Spyre.
     (
-        "configs/device_config.py",
-        'SUPPORTED_DEVICES = ["cuda", "xpu", "hpu", "cpu", "npu", "musa", "mps"]',
-        'SUPPORTED_DEVICES = ["cuda", "xpu", "hpu", "cpu", "npu", "musa", "mps", "spyre"]  # OOT/Spyre',
+        "utils/common.py",
+        "from torchvision.io import decode_jpeg",
+        """try:
+    from torchvision.io import decode_jpeg
+except (ImportError, RuntimeError):
+    decode_jpeg = None""",
+    ),
+    (
+        "configs/utils.py",
+        """    AutoImageProcessor.register(
+        config, slow_image_processor_class=image_processor, exist_ok=True
+    )""",
+        """    try:
+        AutoImageProcessor.register(
+            config, slow_image_processor_class=image_processor, exist_ok=True
+        )
+    except ImportError:
+        # Text-only out-of-tree runtimes need not install torchvision.
+        pass""",
+    ),
+    (
+        "configs/qwen3_asr.py",
+        'AutoConfig.register("qwen3_asr", Qwen3ASRConfig)\n'
+        'AutoConfig.register("qwen3_asr_thinker", Qwen3ASRThinkerConfig)',
+        'AutoConfig.register("qwen3_asr", Qwen3ASRConfig, exist_ok=True)\n'
+        "AutoConfig.register("
+        '"qwen3_asr_thinker", Qwen3ASRThinkerConfig, exist_ok=True)',
     ),
 ]
 
@@ -84,8 +85,9 @@ def main() -> int:
             print(f"  [skip] {rel} already patched")
             continue
         if old not in src:
-            print(f"  [WARN] {rel}: anchor not found (sglang version drift?) — review manually")
-            continue
+            raise RuntimeError(
+                f"{rel}: patch anchor not found; expected sglang==0.5.18"
+            )
         with open(path, "w") as f:
             f.write(src.replace(old, new, 1))
         print(f"  [ok]   {rel} patched")

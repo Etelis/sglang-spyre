@@ -39,6 +39,7 @@ def install() -> None:
 
 def _install_oot_op_forwards() -> None:
     from sglang_spyre_backend.device_ops import register_spyre_ops
+
     register_spyre_ops()
 
 
@@ -69,9 +70,7 @@ def _force_rotary_init_on_cpu() -> None:
         inv_freq = 1.0 / (
             base
             ** (
-                torch.arange(
-                    0, self.rotary_dim, 2, dtype=torch.float, device="cpu"
-                )
+                torch.arange(0, self.rotary_dim, 2, dtype=torch.float, device="cpu")
                 / self.rotary_dim
             )
         )
@@ -123,6 +122,7 @@ def _install_post_load_hook() -> None:
     # If this import fails the environment is truly broken; let it propagate
     # so init_backend logs it rather than silently disabling max-on-Spyre.
     import importlib
+
     mr_mod = importlib.import_module("sglang.srt.model_executor.model_runner")
 
     # Capture the original at patch time (works even mid-import: classes are
@@ -146,6 +146,7 @@ def _install_post_load_hook() -> None:
         #       defaults / rotary inv_freq lowering).
         # Modes 2/3 with device=cpu and the env var unset are unaffected.
         import os as _os
+
         try:
             dev = str(getattr(self, "device", "cpu"))
         except Exception:
@@ -158,13 +159,16 @@ def _install_post_load_hook() -> None:
             from sglang_spyre_backend.model_wrapper import bodify_model_for_spyre
 
             try:
-                move_model_to_spyre(self.model)
-            except Exception:
-                logger.exception("move_model_to_spyre failed")
-            try:
                 bodify_model_for_spyre(self.model)
             except Exception:
                 logger.exception("bodify_model_for_spyre failed")
+            try:
+                # Run after body placement: the tied-weight-safe LM-head path
+                # deliberately keeps the embedding weight on CPU while adding
+                # a separate transposed projection on Spyre.
+                move_model_to_spyre(self.model)
+            except Exception:
+                logger.exception("move_model_to_spyre failed")
         return result
 
     ModelRunner.load_model = _spyre_load_model

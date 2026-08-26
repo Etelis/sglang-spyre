@@ -17,47 +17,76 @@ import logging
 
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 
 logger = logging.getLogger(__name__)
 
 _SPYRE = torch.device("spyre")
-_DTYPE = torch.bfloat16
+_DTYPE = torch.float16
 
 
 class SpyreLinearMethod:
-    """Drop-in replacement for UnquantizedLinearMethod.
+    """Unquantized linear method using spyre-inference's transposed fast path."""
 
-    Converts input to Spyre BF16 and calls F.linear with the weight
-    already on Spyre. Output is returned on Spyre so MLP residuals
-    and attention projections stay on-device.
-
-    RowParallelLinear (output projection, o_proj) converts the result
-    back to CPU — that's handled per-layer in move_model_to_spyre().
-    """
-
-    def create_weights(self, layer, input_size_per_partition,
-                       output_partition_sizes, input_size, output_size,
-                       params_dtype, **extra_weight_attrs):
+    def create_weights(
+        self,
+        layer,
+        input_size_per_partition,
+        output_partition_sizes,
+        input_size,
+        output_size,
+        params_dtype,
+        **extra_weight_attrs,
+    ):
         # Delegate to the original method (already created weights); this
         # is only called at model init before we swap the method.
         pass
 
     def process_weights_after_loading(self, layer):
-        # Move weight to Spyre
+        # Store W^T physically as [in, out]. This is the current
+        # spyre-inference fast path and avoids F.linear's x @ A^T layout.
         if hasattr(layer, "weight") and layer.weight is not None:
-            layer.weight.data = layer.weight.data.to(
-                device=_SPYRE, dtype=_DTYPE
-            )
+            weight_t = layer.weight.data.to(dtype=_DTYPE).t().contiguous().to(_SPYRE)
+            layer.weight = nn.Parameter(weight_t, requires_grad=False)
+            layer.spyre_weight_transposed = True
 
     def apply(self, layer, x, bias=None):
-        # Convert input to Spyre BF16 if not already there
+        # Convert input to the pinned Spyre dtype if not already there.
         if x.device.type != "spyre":
             x = x.to(device=_SPYRE, dtype=_DTYPE)
         elif x.dtype != _DTYPE:
             x = x.to(dtype=_DTYPE)
         bias_s = bias.to(device=_SPYRE, dtype=_DTYPE) if bias is not None else None
-        return F.linear(x, layer.weight.data, bias_s)
+        out = torch.matmul(x, layer.weight)
+        if bias_s is not None:
+            out = out + bias_s
+        return out
+
+
+class SpyreLMHeadMethod:
+    """LM-head variant of the transposed fast path.
+
+    The original weight remains on CPU for tied embeddings; an independently
+    stored, row-padded transpose is used for the projection on Spyre.
+    """
+
+    def process_weights_after_loading(self, layer):
+        weight = layer.weight.data.to(dtype=_DTYPE)
+        padding = (-weight.shape[0]) % (64 * 32)
+        if padding:
+            weight = torch.nn.functional.pad(weight, (0, 0, 0, padding))
+        layer.spyre_row_padding = padding
+        layer.padded_weight_t = nn.Parameter(
+            weight.t().contiguous().to(_SPYRE), requires_grad=False
+        )
+
+    def apply(self, layer, x, bias=None):
+        if x.device.type != "spyre" or x.dtype != _DTYPE:
+            x = x.to(device=_SPYRE, dtype=_DTYPE)
+        out = torch.matmul(x, layer.padded_weight_t)
+        if bias is not None:
+            out = out + bias.to(device=_SPYRE, dtype=_DTYPE)
+        padding = layer.spyre_row_padding
+        return out[:, :-padding] if padding else out
 
 
 def move_model_to_spyre(model: nn.Module) -> None:
@@ -83,24 +112,26 @@ def move_model_to_spyre(model: nn.Module) -> None:
             qm = getattr(module, "quant_method", None)
             if isinstance(qm, UnquantizedLinearMethod):
                 module.quant_method = SpyreLinearMethod()
-                # Replace the parameter wholesale — SGLang uses
-                # ModelWeightParameter which rejects .data assignment of
-                # a different device/dtype.
-                if hasattr(module, "weight") and module.weight is not None:
-                    new_weight = module.weight.data.to(device=_SPYRE, dtype=_DTYPE)
-                    module.weight = nn.Parameter(new_weight, requires_grad=False)
+                module.quant_method.process_weights_after_loading(module)
                 n_patched += 1
             elif qm is not None:
                 n_skipped_quant += 1
 
+    # Port spyre-inference's dedicated tied-weight-safe LM-head path.
+    lm_head = getattr(model, "lm_head", None)
+    if lm_head is not None and hasattr(lm_head, "weight"):
+        lm_method = SpyreLMHeadMethod()
+        lm_method.process_weights_after_loading(lm_head)
+        lm_head.quant_method = lm_method
+
     logger.info(
         "patched %d LinearBase layers, skipped %d quantized",
-        n_patched, n_skipped_quant,
+        n_patched,
+        n_skipped_quant,
     )
 
-    # Wrap model.forward so hidden_states comes back to CPU at the model
-    # boundary — the logits processor uses advanced indexing which Spyre
-    # doesn't support, and downstream sampling lives on CPU.
+    # Keep indexing/sampling on CPU while running the large LM-head projection
+    # on Spyre, matching spyre-inference's model-wrapper boundary.
     _wrap_model_forward_for_cpu_output(model)
 
 
@@ -127,10 +158,34 @@ def _wrap_model_forward_for_cpu_output(model: nn.Module) -> None:
             out = out.to("cpu")
         elif isinstance(out, tuple):
             out = tuple(
-                t.to("cpu") if isinstance(t, torch.Tensor) and t.device.type == "spyre" else t
+                t.to("cpu")
+                if isinstance(t, torch.Tensor) and t.device.type == "spyre"
+                else t
                 for t in out
             )
         return out
 
     inner.forward = wrapped_forward
+    if hasattr(model, "compute_logits"):
+        original_compute_logits = model.compute_logits
+
+        def wrapped_compute_logits(hidden_states, *args, **kwargs):
+            if isinstance(hidden_states, torch.Tensor):
+                hidden_states = hidden_states.to(device=_SPYRE, dtype=_DTYPE)
+            result = original_compute_logits(hidden_states, *args, **kwargs)
+
+            def to_cpu(value):
+                if isinstance(value, torch.Tensor) and value.device.type == "spyre":
+                    return value.to("cpu")
+                return value
+
+            if isinstance(result, tuple):
+                return tuple(to_cpu(value) for value in result)
+            if hasattr(result, "__dict__"):
+                for key, value in vars(result).items():
+                    setattr(result, key, to_cpu(value))
+                return result
+            return to_cpu(result)
+
+        model.compute_logits = wrapped_compute_logits
     logger.info("wrapped inner model.forward to return CPU hidden_states")

@@ -1,0 +1,63 @@
+{
+  "date": "2026-08-26",
+  "cluster": "api.dev.spyre.res.ibm.com",
+  "container_image": "us.icr.io/wxpe-cicd-internal/amd64/torch-aiu-runtime-dev:latest",
+  "container_image_digest": "sha256:daa809d6c0487b019bc992e988570be5e358aa9c2b451911074654bbeec2dacd",
+  "runtime_rpms": {
+    "ibm-aiu-toolbox-e2e": "2.0.0-0.main.1+28.47d9b91_0.el10",
+    "ibm-deeptools": "2.0.0-0.main.1+2320.eb31687_0.el10",
+    "ibm-flex": "2.0.0-0.main.1+495.a86bb35_0.el10",
+    "ibm-libaiupti": "2.0.0-0.main.1+21.bd7054d_0.el10",
+    "ibm-senlib": "2.0.0-0.main.1+244.de8291a_0.el10",
+    "ibm-spyre-comms": "1.0.0-0.main.1+124.3523cde_0.el10"
+  },
+  "model": "ibm-ai-platform/micro-g3.3-8b-instruct-1b",
+  "software": {
+    "spyre_inference_revision": "6e5ff996178255ff63acec480cf8fb43ce1e43de",
+    "torch_spyre_revision": "a31289852145a59099edccc3e506cf5336e8e2e0",
+    "sglang_revision": "71de97b264b04dcd514cf904003028aefe9775c8",
+    "torch": "2.13.0+cpu",
+    "transformers": "5.14.1"
+  },
+  "end_to_end_latency": {
+    "input_tokens": 64,
+    "output_tokens": 16,
+    "batch_size": 1,
+    "warmup_iterations": 1,
+    "measured_iterations": 3,
+    "spyre_inference_mean_seconds": 0.42774078001578647,
+    "sglang_spyre_mean_seconds": 0.4247138799012949,
+    "sglang_over_spyre_inference": 0.9929235175697303,
+    "sglang_speedup": 1.0071269159255993,
+    "parity_threshold": 0.15,
+    "parity_pass": true
+  },
+  "ported_attention_kernel_ab": {
+    "geometry": {
+      "query_heads": 32,
+      "kv_heads": 8,
+      "head_size": 128,
+      "cached_tokens": 256
+    },
+    "candidate_median_ms": 0.31987475231289864,
+    "spyre_inference_median_ms": 0.31575195025652647,
+    "candidate_over_reference": 1.0130570913434507,
+    "exact_output_match": true,
+    "parity_pass": true
+  },
+  "single_attention_forward": {
+    "geometry": "micro-g3.3-8b-instruct-1b decode attention",
+    "pytorch_cpu_ms": 1.2701160740107298,
+    "spyre_ms_including_output_copy": 0.9786619339138269,
+    "speedup_over_pytorch_cpu": 1.297808804038521
+  },
+  "model_level_context": {
+    "note": "These are reported separately because SGLang request latency includes scheduler IPC and token sampling while model.forward does not.",
+    "pytorch_cpu_64_token_prefill_ms": 105.46595603227615,
+    "pytorch_cpu_cached_decode_forward_ms": 14.574931003153324,
+    "pytorch_cpu_64_to_16_generation_seconds": 0.33419276191852987,
+    "sglang_spyre_64_token_one_token_request_ms": 145.76580002903938,
+    "sglang_spyre_64_to_16_generation_seconds": 0.4247138799012949,
+    "end_to_end_speedup_over_pytorch_cpu": 0.7868656470473664
+  }
+}

@@ -1,185 +1,164 @@
-"""SpyreAttentionBackend — BMM-based paged attention for Spyre AIU.
+# Copyright 2026 The Spyre-Inference Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
 
-Ported from spyre_attn_exp.py in spyre-inference, adapted to SGLang's
-AttentionBackend interface.
+"""SGLang adapter for spyre-inference's dense paged-attention implementation.
 
-Key design decisions (unchanged from spyre-inference):
-- No advanced tensor indexing on Spyre: scatter/gather done via BMM
-  against one-hot selection masks, built on CPU and transferred.
-- KV cache lives on Spyre device as a flat [num_kv_heads,
-  aligned_num_physical_blocks, block_width] tensor per layer.
-- Attention computation runs compiled on Spyre (_attn_4d).
-- max_num_seqs=1 constraint: single-sequence indexing only.
-
-References:
-  - spyre-inference/spyre_inference/v1/attention/backends/spyre_attn_exp.py
+The device kernels are ported verbatim in :mod:`spyre_attention_kernel`; this
+module only translates SGLang's ``ForwardBatch`` metadata into the tensors that
+those kernels consume.  Baseline: spyre-inference 6e5ff996 (2026-08-26).
 """
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Optional
+import os
+from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 import torch
-
 from sglang.srt.layers.attention.base_attn_backend import AttentionBackend
+
+from sglang_spyre_backend.spyre_attention_kernel import (
+    create_compilable_page_attn,
+    maybe_compile,
+    reshape_and_cache_kernel,
+    slot_major_kv_layout,
+)
 
 if TYPE_CHECKING:
     from sglang.srt.layers.radix_attention import RadixAttention
     from sglang.srt.model_executor.forward_batch_info import ForwardBatch
 
-# Alignment constants (must match spyre-inference)
+
 KV_LENGTH_ALIGNMENT = 256
 QUERY_CHUNK_SIZE = 32
-BLOCK_ALIGN = 64  # Physical blocks must be multiple of 64 for stick alignment
+INT32_ELEMS_PER_STICK = 32
 
 
-def _attn_4d(
-    q: torch.Tensor,
-    k: torch.Tensor,
-    v: torch.Tensor,
-    scale: float,
-    mask: torch.Tensor,
-) -> torch.Tensor:
-    """Batched 4D attention with additive mask."""
-    scores = q @ k.transpose(-2, -1)
-    scores = scores * scale
-    scores = scores + mask
-    p = scores.softmax(dim=-1)
-    return p @ v
+def _ceil_to(value: int, alignment: int) -> int:
+    return (value + alignment - 1) // alignment * alignment
 
 
-def _scatter_cache(cache, mask, values):
-    """Elementwise scatter: update cache positions indicated by mask."""
-    return cache * (1.0 - mask) + values
+def _convert(tensor: torch.Tensor, device: torch.device, dtype=None) -> torch.Tensor:
+    """Match spyre-inference's dtype-on-CPU then device conversion contract."""
+    target_dtype = tensor.dtype if dtype is None else dtype
+    if tensor.device.type == "spyre" and tensor.dtype != target_dtype:
+        tensor = tensor.to("cpu")
+    if tensor.dtype != target_dtype:
+        tensor = tensor.to(dtype=target_dtype)
+    if tensor.device.type != device.type:
+        tensor = tensor.to(device)
+    return tensor
 
 
+@dataclass
 class SpyreAttentionState:
-    """Per-forward-pass metadata for a single layer."""
-
-    def __init__(self):
-        self.attention_mask: Optional[torch.Tensor] = None
-        self.gather_sel_mask_dev: Optional[torch.Tensor] = None
-        self.aligned_max_seq_len: int = 0
-        self.scatter_mask_dev: Optional[torch.Tensor] = None
-        self.scatter_row_sel_dev: Optional[torch.Tensor] = None
-        self.scatter_col_sel_dev: Optional[torch.Tensor] = None
-        self.num_actual_tokens: int = 0
-        self.apply_causal_mask: bool = False
+    num_actual_tokens: int = 0
+    query_len: int = 0
+    seq_len: int = 0
+    block_size: int = 0
+    aligned_query_len: int = 0
+    page_index_table_cpu: torch.Tensor | None = None
+    page_index_table_device: torch.Tensor | None = None
+    slot_mapping_cpu: torch.Tensor | None = None
+    slot_mapping_device: torch.Tensor | None = None
+    mask_tiles_cpu: list[torch.Tensor] | None = None
+    mask_tiles_device: list[torch.Tensor] | None = None
 
 
 class SpyreAttentionBackend(AttentionBackend):
-    """SGLang attention backend for Spyre AIU using BMM-based paged KV cache.
+    """Latest spyre-inference paged attention behind SGLang's backend API.
 
-    Registered as "spyre" via SpyreSRTPlatform.get_default_attention_backend().
+    The supported path intentionally has the same current limits as this
+    prototype's original paged path: decoder self-attention, one sequence,
+    and TP=1.  KV pages remain resident on Spyre and are read through the
+    same compiled indirect ``index_select`` loop used by spyre-inference.
     """
 
-    # No CUDA graph support
     needs_cpu_seq_lens: bool = True
 
     def __init__(self, model_runner):
+        super().__init__()
         self.model_runner = model_runner
         self._target_device = torch.device("spyre")
-        self._target_dtype = torch.bfloat16
-
-        # Per-layer on-device KV caches, keyed by layer_id
+        self._target_dtype = torch.float16
+        self._state = SpyreAttentionState()
         self._k_cache: dict[int, torch.Tensor] = {}
         self._v_cache: dict[int, torch.Tensor] = {}
-        self._cache_initialized: set[int] = set()
-
-        # Current forward metadata (built once per step, shared across layers)
-        self._state = SpyreAttentionState()
-
-        # Attention kernel. torch.compile is intentionally NOT applied yet:
-        # Spyre compilation of _attn_4d isn't stable, so we run it eagerly.
-        # To re-enable once stable: self._attn_4d = torch.compile(_attn_4d, dynamic=False)
-        self._attn_4d = _attn_4d
-
-    # ------------------------------------------------------------------
-    # Forward metadata (called once per forward pass, shared across layers)
-    # ------------------------------------------------------------------
+        self._compile_attn = os.environ.get("SGLANG_SPYRE_COMPILE", "1") != "0"
+        # Latest spyre-inference always compiles index_copy_: eager int32
+        # indices otherwise fall back to CPU.
+        self._reshape_fn = torch.compile(reshape_and_cache_kernel, dynamic=False)
+        self._attn_fns: dict[tuple[int, int, str, int], object] = {}
 
     def init_forward_metadata(self, forward_batch: ForwardBatch):
-        """Build all per-step metadata on CPU, transfer masks to Spyre."""
-        from sglang.srt.model_executor.forward_batch_info import ForwardMode
-
-        state = self._state
-
-        seq_lens = forward_batch.seq_lens_cpu  # CPU tensor
-        max_seq_len = int(seq_lens.max().item()) if len(seq_lens) > 0 else 0
-        max_query_len = 1 if forward_batch.forward_mode.is_decode() else max_seq_len
-
-        # num_actual_tokens = total tokens in this forward step.
-        # Decode: 1 per sequence; Extend: full prefill length per sequence.
-        if forward_batch.forward_mode.is_decode():
-            state.num_actual_tokens = forward_batch.batch_size
-        else:
-            state.num_actual_tokens = int(seq_lens.sum().item())
-
-        state.apply_causal_mask = (
-            forward_batch.forward_mode.is_extend() and max_query_len > 1
-        )
-
-        # Aligned max sequence length (buckets recompilation)
-        state.aligned_max_seq_len = (
-            (max_seq_len + KV_LENGTH_ALIGNMENT - 1)
-            // KV_LENGTH_ALIGNMENT
-            * KV_LENGTH_ALIGNMENT
-        )
-
-        # We only support batch_size=1 for now
-        if forward_batch.batch_size > 1:
+        if forward_batch.batch_size != 1:
             raise ValueError(
-                "SpyreAttentionBackend: max_num_seqs=1 constraint. "
-                f"Got batch_size={forward_batch.batch_size}."
+                "The SGLang Spyre paged backend currently supports one sequence; "
+                f"got batch_size={forward_batch.batch_size}."
             )
 
-        # Build attention mask
-        query_start_loc = torch.tensor([0, max_query_len], dtype=torch.int32)
-        state.attention_mask = self._build_attention_mask(
-            seq_lens,
-            query_start_loc,
-            state.apply_causal_mask,
-            max_query_len,
-            state.aligned_max_seq_len,
+        seq_lens = forward_batch.seq_lens_cpu
+        if seq_lens is None:
+            seq_lens = forward_batch.seq_lens.to("cpu")
+        seq_len = int(seq_lens[0].item())
+
+        if forward_batch.forward_mode.is_decode():
+            query_len = 1
+        else:
+            extend_lens = forward_batch.extend_seq_lens_cpu
+            if extend_lens is not None:
+                query_len = int(extend_lens[0])
+            elif forward_batch.extend_seq_lens is not None:
+                query_len = int(forward_batch.extend_seq_lens[0].item())
+            else:
+                query_len = int(forward_batch.extend_num_tokens or seq_len)
+
+        block_size = int(self.model_runner.token_to_kv_pool.page_size)
+        if block_size % 64:
+            raise ValueError(
+                "Spyre paged attention requires page_size to be a multiple of 64; "
+                f"got {block_size}."
+            )
+
+        state = SpyreAttentionState(
+            num_actual_tokens=query_len,
+            query_len=query_len,
+            seq_len=seq_len,
+            block_size=block_size,
+            aligned_query_len=(
+                1 if query_len == 1 else _ceil_to(query_len, QUERY_CHUNK_SIZE)
+            ),
+            slot_mapping_cpu=forward_batch.out_cache_loc[:query_len]
+            .to(device="cpu", dtype=torch.int32)
+            .contiguous(),
         )
 
-        # Build gather selection mask. SGLang's req_to_token is a token->slot map
-        # of shape [num_reqs+1, max_context_len] that lives on req_to_token_pool
-        # (NOT on forward_batch). Take this request's per-token slot row; the mask
-        # builder derives the logical-page->physical-page table from it.
-        num_kv_heads = self._get_num_kv_heads()
         req_idx = int(forward_batch.req_pool_indices[0].item())
-        seq_len0 = int(seq_lens[0].item())
         token_slots = self.model_runner.req_to_token_pool.req_to_token[
-            req_idx, :seq_len0
+            req_idx, :seq_len
         ].to("cpu")
-        if num_kv_heads > 0:
-            state.gather_sel_mask_dev = self._build_gather_sel_mask(
-                token_slots,
-                seq_len0,
-                state.aligned_max_seq_len,
-                num_kv_heads,
-            )
-
-        # Build scatter masks from slot mapping
-        slot_mapping = forward_batch.out_cache_loc  # [num_actual_tokens]
-        if slot_mapping is not None and num_kv_heads > 0:
-            (
-                state.scatter_mask_dev,
-                state.scatter_row_sel_dev,
-                state.scatter_col_sel_dev,
-            ) = self._build_scatter_masks(slot_mapping, num_kv_heads)
+        num_blocks = _ceil_to(seq_len, block_size) // block_size
+        physical_pages = (token_slots[::block_size][:num_blocks] // block_size).to(
+            torch.int32
+        )
+        page_table = torch.zeros(num_blocks, INT32_ELEMS_PER_STICK, dtype=torch.int32)
+        page_table[:, 0] = physical_pages
+        state.page_index_table_cpu = page_table
+        state.mask_tiles_cpu = self._build_mask_tiles(
+            seq_len=seq_len,
+            query_len=query_len,
+            block_size=block_size,
+            aligned_query_len=state.aligned_query_len,
+        )
+        self._state = state
 
     def init_cuda_graph_state(self, max_bs: int, max_num_tokens: int):
-        # No graph capture on Spyre
         pass
 
     def get_cuda_graph_seq_len_fill_value(self):
         return 1
-
-    # ------------------------------------------------------------------
-    # Forward passes
-    # ------------------------------------------------------------------
 
     def forward_decode(
         self,
@@ -191,7 +170,7 @@ class SpyreAttentionBackend(AttentionBackend):
         save_kv_cache: bool = True,
         **kwargs,
     ) -> torch.Tensor:
-        return self._forward_impl(q, k, v, layer, forward_batch, save_kv_cache)
+        return self._forward_impl(q, k, v, layer, save_kv_cache)
 
     def forward_extend(
         self,
@@ -203,340 +182,204 @@ class SpyreAttentionBackend(AttentionBackend):
         save_kv_cache: bool = True,
         **kwargs,
     ) -> torch.Tensor:
-        return self._forward_impl(q, k, v, layer, forward_batch, save_kv_cache)
+        return self._forward_impl(q, k, v, layer, save_kv_cache)
 
-    def _forward_impl(
-        self,
-        q: torch.Tensor,
-        k: torch.Tensor,
-        v: torch.Tensor,
-        layer: RadixAttention,
-        forward_batch: ForwardBatch,
-        save_kv_cache: bool,
-    ) -> torch.Tensor:
-        layer_id = layer.layer_id
-        num_kv_heads = layer.tp_k_head_num
-        head_size = layer.head_dim
-        num_heads = layer.tp_q_head_num
-        scale = layer.scaling
-
-        self._ensure_cache(layer_id, num_kv_heads, head_size)
-
+    def _forward_impl(self, q, k, v, layer, save_kv_cache: bool) -> torch.Tensor:
         state = self._state
-        num_tokens = state.num_actual_tokens
+        num_heads = layer.tp_q_head_num
+        num_kv_heads = layer.tp_k_head_num
+        head_size = layer.qk_head_dim
+        if head_size != layer.v_head_dim:
+            raise NotImplementedError(
+                "Spyre currently requires equal QK and V head dimensions"
+            )
+        if num_heads % num_kv_heads:
+            raise ValueError("num_heads must be divisible by num_kv_heads")
 
-        # q/k/v arrive FLATTENED as [num_tokens, n_heads*head_size] (SGLang passes
-        # the raw projection output; the dense path's base forward_extend does this
-        # view itself). View to 3D [num_tokens, n_heads, head_size] for the bmm
-        # scatter and the per-head reshape below.
-        q_cpu = q[:num_tokens].contiguous().view(num_tokens, num_heads, head_size)
-        k_cpu = k[:num_tokens].contiguous().view(num_tokens, num_kv_heads, head_size)
-        v_cpu = v[:num_tokens].contiguous().view(num_tokens, num_kv_heads, head_size)
+        self._ensure_cache(layer.layer_id, num_kv_heads, head_size, state.block_size)
+        k_pages = self._k_cache[layer.layer_id]
+        v_pages = self._v_cache[layer.layer_id]
+        original_device = q.device
 
-        # Step 1: Scatter new KV tokens into on-device cache
-        if save_kv_cache and state.scatter_mask_dev is not None:
-            self._scatter_to_device_cache(
-                layer_id,
-                k_cpu,
-                v_cpu,
-                state.scatter_mask_dev,
-                state.scatter_row_sel_dev,
-                state.scatter_col_sel_dev,
+        q_dev = _convert(
+            q[: state.num_actual_tokens]
+            .contiguous()
+            .view(state.num_actual_tokens, num_heads, head_size),
+            self._target_device,
+            self._target_dtype,
+        )
+        k_dev = _convert(
+            k[: state.num_actual_tokens]
+            .contiguous()
+            .view(state.num_actual_tokens, num_kv_heads, head_size),
+            self._target_device,
+            self._target_dtype,
+        )
+        v_dev = _convert(
+            v[: state.num_actual_tokens]
+            .contiguous()
+            .view(state.num_actual_tokens, num_kv_heads, head_size),
+            self._target_device,
+            self._target_dtype,
+        )
+
+        if state.slot_mapping_device is None:
+            assert state.slot_mapping_cpu is not None
+            state.slot_mapping_device = _convert(
+                state.slot_mapping_cpu, self._target_device
+            )
+        if state.page_index_table_device is None:
+            assert state.page_index_table_cpu is not None
+            state.page_index_table_device = _convert(
+                state.page_index_table_cpu, self._target_device
+            )
+        if state.mask_tiles_device is None:
+            assert state.mask_tiles_cpu is not None
+            state.mask_tiles_device = [
+                _convert(tile, self._target_device) for tile in state.mask_tiles_cpu
+            ]
+
+        if save_kv_cache:
+            slots = (-1, num_kv_heads, head_size)
+            self._reshape_fn(
+                k_dev,
+                v_dev,
+                k_pages.view(slots),
+                v_pages.view(slots),
+                state.slot_mapping_device,
             )
 
-        # Step 2: Gather dense KV from on-device cache
-        compact_k, compact_v = self._gather_from_device_cache(
-            layer_id,
-            state.gather_sel_mask_dev,
-            state.aligned_max_seq_len,
+        if state.query_len == 1:
+            query = q_dev.unbind(dim=0)[0].reshape(
+                num_kv_heads, num_heads // num_kv_heads, 1, head_size
+            )
+            # Preserve the canonical layout required by torch-spyre on decode.
+            query = torch.ops.spyre.opaque_copy_(
+                query,
+                torch.zeros(
+                    query.shape,
+                    dtype=query.dtype,
+                    device=query.device,
+                ),
+            )
+        else:
+            if state.aligned_query_len > state.query_len:
+                q_dev = torch.nn.functional.pad(
+                    q_dev,
+                    (0, 0, 0, 0, 0, state.aligned_query_len - state.query_len),
+                )
+            query = (
+                q_dev.unsqueeze(0)
+                .transpose(1, 2)
+                .contiguous()
+                .reshape(
+                    num_kv_heads,
+                    num_heads // num_kv_heads,
+                    state.aligned_query_len,
+                    head_size,
+                )
+            )
+
+        num_blocks = len(state.mask_tiles_device)
+        store_mode = "copy" if self._compile_attn else "none"
+        fn = self._get_attn_fn(
+            num_blocks,
+            state.aligned_query_len,
+            num_heads,
+            head_size,
+            store_mode,
+            state.query_len,
+        )
+        output = torch.empty(
+            state.query_len,
+            num_heads,
+            head_size,
+            dtype=self._target_dtype,
+            device=self._target_device,
+        )
+        result = fn(
+            query,
+            k_pages,
+            v_pages,
+            state.page_index_table_device,
+            state.mask_tiles_device,
+            float(layer.scaling),
+            out=output if store_mode == "copy" else None,
+        )
+        if store_mode == "none":
+            output.copy_(result[: state.query_len])
+
+        flat = output.reshape(state.query_len, num_heads * head_size)
+        if original_device.type != "spyre":
+            flat = flat.to(device=original_device, dtype=q.dtype)
+        return flat
+
+    def _get_attn_fn(
+        self,
+        num_blocks: int,
+        query_len: int,
+        num_heads: int,
+        head_size: int,
+        store_mode: str,
+        store_len: int,
+    ):
+        key = (num_blocks, query_len, store_mode, store_len)
+        if key not in self._attn_fns:
+            self._attn_fns[key] = maybe_compile(
+                create_compilable_page_attn(
+                    num_blocks,
+                    query_len,
+                    num_heads,
+                    head_size,
+                    store_mode=store_mode,
+                    store_len=store_len,
+                ),
+                self._compile_attn,
+            )
+        return self._attn_fns[key]
+
+    def _ensure_cache(
+        self, layer_id: int, num_kv_heads: int, head_size: int, block_size: int
+    ) -> None:
+        if layer_id in self._k_cache:
+            return
+        num_slots = int(self.model_runner.token_to_kv_pool.size)
+        num_pages = _ceil_to(num_slots, block_size) // block_size
+        layout = slot_major_kv_layout(
+            num_pages * block_size,
             num_kv_heads,
             head_size,
+            self._target_dtype,
+        )
+        shape = (num_pages, block_size, num_kv_heads, head_size)
+        self._k_cache[layer_id] = torch.zeros(shape, dtype=self._target_dtype).to(
+            self._target_device, device_layout=layout
+        )
+        self._v_cache[layer_id] = torch.zeros(shape, dtype=self._target_dtype).to(
+            self._target_device, device_layout=layout
         )
 
-        # Step 3: Reshape query and run attention
-        # query arrives as [num_tokens, num_heads, head_size] on CPU.
-        # Following spyre-inference convention, treat batch=1 (max_num_seqs=1).
-        # Reshape to [num_seqs, max_query_len, num_heads, head_size] = [1, num_tokens, ...]
-        num_queries_per_kv = num_heads // num_kv_heads
-        max_query_len = q_cpu.shape[0]
-        padded_query_len = (
-            (max_query_len + QUERY_CHUNK_SIZE - 1) // QUERY_CHUNK_SIZE * QUERY_CHUNK_SIZE
-        )
-
-        # [1, max_query_len, num_heads, head_size]
-        query = q_cpu.unsqueeze(0).contiguous()
-        if padded_query_len > max_query_len:
-            query = torch.nn.functional.pad(
-                query, (0, 0, 0, 0, 0, padded_query_len - max_query_len),
-                mode="constant", value=0.0,
-            )
-
-        # [1, num_heads, padded_q, head_size] -> [1*num_kv_heads, num_queries_per_kv, padded_q, head_size]
-        q = query.transpose(1, 2).contiguous()
-        q = q.reshape(1 * num_kv_heads, num_queries_per_kv, padded_query_len, head_size)
-
-        # compact_k/v arrive as [1, num_kv_heads, aligned_max_seq_len, head_size]
-        # reshape to [1*num_kv_heads, 1, aligned_max_seq_len, head_size] for broadcast
-        kv_len = compact_k.shape[2]
-        k_4d = compact_k.reshape(1 * num_kv_heads, 1, kv_len, head_size)
-        v_4d = compact_v.reshape(1 * num_kv_heads, 1, kv_len, head_size)
-
-        # Move query to Spyre
-        q_dev = q.to(self._target_dtype).to(self._target_device)
-
-        mask = state.attention_mask  # on Spyre already, shape [1*num_kv_heads, 1, padded_q, kv_len]
-
-        attn_out_dev = self._attn_4d(q_dev, k_4d, v_4d, scale, mask)
-        # attn_out_dev: [1*num_kv_heads, num_queries_per_kv, padded_q, head_size]
-
-        # Reshape back to [1, num_heads, padded_q, head_size] and to CPU
-        attn_out = (
-            attn_out_dev
-            .reshape(1, num_heads, padded_query_len, head_size)
-            .transpose(1, 2)         # [1, padded_q, num_heads, head_size]
-            .contiguous()
-            .to(device="cpu", dtype=q_cpu.dtype)
-        )
-        attn_out = attn_out[0, :num_tokens]  # [num_tokens, num_heads, head_size]
-        return attn_out.reshape(num_tokens, num_heads * head_size)
-
-    # ------------------------------------------------------------------
-    # Cache management
-    # ------------------------------------------------------------------
-
-    def _ensure_cache(self, layer_id: int, num_kv_heads: int, head_size: int):
-        if layer_id in self._cache_initialized:
-            return
-        block_size = self.model_runner.token_to_kv_pool.page_size
-        # Physical axis is PAGES, not tokens (pool.size is a token count).
-        num_pages = self.model_runner.token_to_kv_pool.size // block_size
-        aligned_blocks = ((num_pages + BLOCK_ALIGN - 1) // BLOCK_ALIGN) * BLOCK_ALIGN
-        block_width = block_size * head_size
-
-        self._k_cache[layer_id] = torch.zeros(
-            num_kv_heads, aligned_blocks, block_width,
-            dtype=self._target_dtype,
-            device=self._target_device,
-        )
-        self._v_cache[layer_id] = torch.zeros(
-            num_kv_heads, aligned_blocks, block_width,
-            dtype=self._target_dtype,
-            device=self._target_device,
-        )
-        self._cache_initialized.add(layer_id)
-
-    def _scatter_to_device_cache(
+    def _build_mask_tiles(
         self,
-        layer_id: int,
-        k_cpu: torch.Tensor,
-        v_cpu: torch.Tensor,
-        scatter_mask_dev: torch.Tensor,
-        row_sel_dev: torch.Tensor,
-        col_sel_dev: torch.Tensor,
-    ):
-        """Two-BMM scatter: place K/V into the on-device cache."""
-        k_dev = k_cpu.to(self._target_dtype).to(self._target_device).contiguous()
-        v_dev = v_cpu.to(self._target_dtype).to(self._target_device).contiguous()
-
-        # BMM 1: spread each token's head_size-vector into block_width slot
-        # [num_tokens, num_kv_heads, head_size] @ [num_tokens, head_size, block_width]
-        # -> [num_tokens, num_kv_heads, block_width]
-        k_spread = torch.bmm(k_dev, col_sel_dev)
-        v_spread = torch.bmm(v_dev, col_sel_dev)
-
-        # Permute to [num_kv_heads, num_tokens, block_width]
-        k_spread = k_spread.transpose(0, 1).contiguous()
-        v_spread = v_spread.transpose(0, 1).contiguous()
-
-        # BMM 2: route each token row to its physical block
-        # [num_kv_heads, aligned_blocks, num_tokens] @ [num_kv_heads, num_tokens, block_width]
-        # -> [num_kv_heads, aligned_blocks, block_width]
-        k_vals = torch.bmm(row_sel_dev, k_spread)
-        v_vals = torch.bmm(row_sel_dev, v_spread)
-
-        self._k_cache[layer_id] = _scatter_cache(
-            self._k_cache[layer_id], scatter_mask_dev, k_vals
-        )
-        self._v_cache[layer_id] = _scatter_cache(
-            self._v_cache[layer_id], scatter_mask_dev, v_vals
-        )
-
-    def _gather_from_device_cache(
-        self,
-        layer_id: int,
-        sel_mask_dev: torch.Tensor,
-        aligned_max_seq_len: int,
-        num_kv_heads: int,
-        head_size: int,
-    ):
-        """BMM gather: assemble dense KV from paged cache."""
-        # sel_mask_dev: [num_kv_heads, aligned_logical_blocks, aligned_physical_blocks]
-        # cache:        [num_kv_heads, aligned_physical_blocks, block_width]
-        # result:       [num_kv_heads, aligned_logical_blocks, block_width]
-        gathered_k = torch.bmm(sel_mask_dev, self._k_cache[layer_id])
-        gathered_v = torch.bmm(sel_mask_dev, self._v_cache[layer_id])
-
-        # Reshape: [num_kv_heads, seq_len, head_size]
-        gathered_k = gathered_k.reshape(num_kv_heads, aligned_max_seq_len, head_size)
-        gathered_v = gathered_v.reshape(num_kv_heads, aligned_max_seq_len, head_size)
-
-        # Add batch dim for attention: [1, num_kv_heads, seq_len, head_size]
-        return gathered_k.unsqueeze(0), gathered_v.unsqueeze(0)
-
-    # ------------------------------------------------------------------
-    # Mask builders (CPU → Spyre)
-    # ------------------------------------------------------------------
-
-    def _build_attention_mask(
-        self,
-        seq_lens: torch.Tensor,
-        query_start_loc: torch.Tensor,
-        apply_causal_mask: bool,
-        max_query_len: int,
-        aligned_max_seq_len: int,
-    ) -> torch.Tensor:
-        num_kv_heads = self._get_num_kv_heads()
-        num_seqs = len(seq_lens)
-        query_lens = query_start_loc[1:] - query_start_loc[:-1]
-
-        padded_query_len = (
-            (max_query_len + QUERY_CHUNK_SIZE - 1) // QUERY_CHUNK_SIZE * QUERY_CHUNK_SIZE
-        )
-
-        q_pos = torch.arange(max_query_len)
-        kv_pos = torch.arange(aligned_max_seq_len)
-
-        q_valid = q_pos.unsqueeze(0) < query_lens.unsqueeze(1)   # [S, Qmax]
-        kv_valid = kv_pos.unsqueeze(0) < seq_lens.unsqueeze(1)   # [S, KVmax]
-        attend = q_valid.unsqueeze(2) & kv_valid.unsqueeze(1)    # [S, Qmax, KVmax]
-
-        if apply_causal_mask:
-            context_lens = seq_lens - query_lens
-            causal_limit = (
-                (context_lens.unsqueeze(1) + q_pos.unsqueeze(0)).unsqueeze(2)
-            )
-            attend = attend & (kv_pos.view(1, 1, -1) <= causal_limit)
-
-        mask_bool = ~attend
-
-        if padded_query_len > max_query_len:
-            pad = torch.ones(
-                num_seqs, padded_query_len - max_query_len, aligned_max_seq_len,
-                dtype=torch.bool,
-            )
-            mask_bool = torch.cat([mask_bool, pad], dim=1)
-
-        neg_inf = torch.finfo(self._target_dtype).min
-        mask = torch.where(
-            mask_bool,
-            torch.tensor(neg_inf, dtype=self._target_dtype),
-            torch.tensor(0.0, dtype=self._target_dtype),
-        )
-
-        # [num_seqs * num_kv_heads, 1, padded_q, aligned_kv]
-        num_queries_per_kv = self._get_num_heads() // num_kv_heads if num_kv_heads > 0 else 1
-        mask_4d = (
-            mask.unsqueeze(1)
-            .expand(-1, num_kv_heads, -1, -1)
-            .reshape(num_seqs * num_kv_heads, 1, padded_query_len, aligned_max_seq_len)
-            .contiguous()
-        )
-        return mask_4d.to(device=self._target_device)
-
-    def _build_gather_sel_mask(
-        self,
-        token_slots: torch.Tensor,   # [seq_len] per-token KV-pool slot ids (CPU)
+        *,
         seq_len: int,
-        aligned_max_seq_len: int,
-        num_kv_heads: int,
-    ) -> torch.Tensor:
-        block_size = self.model_runner.token_to_kv_pool.page_size
-        # Physical axis is PAGES, not tokens.
-        num_pages = self.model_runner.token_to_kv_pool.size // block_size
-        aligned_blocks = ((num_pages + BLOCK_ALIGN - 1) // BLOCK_ALIGN) * BLOCK_ALIGN
-        aligned_logical = aligned_max_seq_len // block_size
-
-        num_kv_blocks = (seq_len + block_size - 1) // block_size
-        sel_2d = torch.zeros(aligned_logical, aligned_blocks, dtype=self._target_dtype)
-
-        # Derive the vLLM-style block table from SGLang's token->slot row. The
-        # PagedTokenToKVPoolAllocator lays out each logical page's tokens
-        # page-aligned and contiguous (slot = page*block_size + offset), so the
-        # first token of logical page L gives physical page = slot // block_size.
-        logical = torch.arange(num_kv_blocks)
-        physical = (token_slots[::block_size][:num_kv_blocks] // block_size).long()
-        sel_2d[logical, physical] = 1.0
-
-        sel_3d = sel_2d.unsqueeze(0).expand(num_kv_heads, -1, -1).contiguous()
-        return sel_3d.to(device=self._target_device)
-
-    def _build_scatter_masks(
-        self,
-        slot_mapping: torch.Tensor,
-        num_kv_heads: int,
-    ):
-        block_size = self.model_runner.token_to_kv_pool.page_size
-        head_size = self._get_head_size()
-        # Physical axis is PAGES, not tokens.
-        num_pages = self.model_runner.token_to_kv_pool.size // block_size
-        aligned_blocks = ((num_pages + BLOCK_ALIGN - 1) // BLOCK_ALIGN) * BLOCK_ALIGN
-        block_width = block_size * head_size
-        num_tokens = len(slot_mapping)
-
-        slot_cpu = slot_mapping.cpu()
-        block_indices = slot_cpu // block_size
-        block_offsets = slot_cpu % block_size
-
-        d_range = torch.arange(head_size)
-        row_idx = block_indices.unsqueeze(1).expand(num_tokens, head_size).reshape(-1)
-        col_idx = (
-            (block_offsets * head_size).unsqueeze(1) + d_range.unsqueeze(0)
-        ).reshape(-1)
-
-        mask = torch.zeros(num_kv_heads, aligned_blocks, block_width, dtype=self._target_dtype)
-        mask[:, row_idx, col_idx] = 1.0
-        mask_dev = mask.to(device=self._target_device)
-
-        # row_sel: [num_kv_heads, aligned_blocks, num_tokens]
-        row_sel_2d = torch.zeros(aligned_blocks, num_tokens, dtype=self._target_dtype)
-        row_sel_2d[block_indices.long(), torch.arange(num_tokens)] = 1.0
-        row_sel_dev = (
-            row_sel_2d.unsqueeze(0).expand(num_kv_heads, -1, -1).contiguous()
-            .to(device=self._target_device)
+        query_len: int,
+        block_size: int,
+        aligned_query_len: int,
+    ) -> list[torch.Tensor]:
+        context_len = seq_len - query_len
+        q_pos = torch.arange(aligned_query_len)
+        kv_pos = torch.arange(_ceil_to(seq_len, block_size))
+        q_valid = q_pos < query_len
+        kv_valid = kv_pos < seq_len
+        causal = kv_pos.unsqueeze(0) <= (context_len + q_pos).unsqueeze(1)
+        attend = q_valid.unsqueeze(1) & kv_valid.unsqueeze(0) & causal
+        mask = torch.where(
+            attend,
+            torch.tensor(0.0, dtype=self._target_dtype),
+            torch.tensor(torch.finfo(self._target_dtype).min, dtype=self._target_dtype),
         )
+        return [tile.contiguous() for tile in mask.split(block_size, dim=1)]
 
-        # col_sel: [num_tokens, head_size, block_width]
-        col_sel = torch.zeros(num_tokens, head_size, block_width, dtype=self._target_dtype)
-        t_idx = torch.arange(num_tokens).unsqueeze(1).expand(num_tokens, head_size)
-        d_idx = d_range.unsqueeze(0).expand(num_tokens, head_size)
-        c_idx = block_offsets.long().unsqueeze(1) * head_size + d_idx
-        col_sel[t_idx.reshape(-1), d_idx.reshape(-1), c_idx.reshape(-1)] = 1.0
-        col_sel_dev = col_sel.to(device=self._target_device)
 
-        return mask_dev, row_sel_dev, col_sel_dev
-
-    # ------------------------------------------------------------------
-    # Helpers
-    # ------------------------------------------------------------------
-
-    def _get_num_kv_heads(self) -> int:
-        try:
-            return self.model_runner.model_config.get_num_kv_heads(
-                self.model_runner.server_args.tp_size
-            )
-        except Exception:
-            return 0
-
-    def _get_num_heads(self) -> int:
-        try:
-            return self.model_runner.model_config.get_num_attention_heads(
-                self.model_runner.server_args.tp_size
-            )
-        except Exception:
-            return 0
-
-    def _get_head_size(self) -> int:
-        try:
-            return self.model_runner.model_config.head_dim
-        except Exception:
-            return 128
+__all__ = ["SpyreAttentionBackend"]
