@@ -26,3 +26,36 @@ request took 334.19 ms in bare PyTorch and 424.71 ms through SGLang/Spyre, or
 0.79x. In other words, this tiny batch-1 model reaches parity with the reference
 Spyre stack but does not beat a 96-thread CPU end to end; the measured 1.30x
 speedup is specifically the synchronized attention forward.
+
+## Three-example MMLU comparison
+
+[`tests/mmlu_speedup_bench.py`](tests/mmlu_speedup_bench.py) compares an
+end-to-end, one-token greedy `generate` call through SGLang/Spyre with bare
+PyTorch CPU. It uses the same model and exact tokenized prompt on both paths,
+batch size 1, one warmup per prompt shape, and three measured iterations. The
+three cases are test index 0 from the pinned
+[`cais/mmlu`](https://huggingface.co/datasets/cais/mmlu/tree/c30699e8356da336a370243923dbaf21066bb9fe)
+revision `c30699e8356da336a370243923dbaf21066bb9fe`.
+
+| MMLU subject | Input tokens | PyTorch CPU mean | SGLang/Spyre mean | Speedup vs CPU |
+|---|---:|---:|---:|---:|
+| abstract algebra | 71 | 101.31 ms | 135.78 ms | 0.746x |
+| anatomy | 125 | 125.27 ms | 167.85 ms | 0.746x |
+| high-school physics | 100 | 106.76 ms | 147.09 ms | 0.726x |
+
+The total-latency ratio is **0.740x** (geometric mean 0.739x), meaning that
+SGLang/Spyre was 35.2% slower than the 96-thread PyTorch CPU baseline for this
+small-request workload. SGLang's timing includes scheduler IPC and sampling;
+the bare PyTorch timing calls `model.generate` directly. This is a latency-only
+comparison: the single generated token matched on the physics case but differed
+on the other two, so the result does not establish output equivalence.
+
+Run it on a configured Spyre host with:
+
+```bash
+python tests/mmlu_speedup_bench.py \
+  --output benchmarks/2026-08-26-mmlu-speedup.json
+```
+
+The checked-in machine-readable result is
+[`benchmarks/2026-08-26-mmlu-speedup.json`](benchmarks/2026-08-26-mmlu-speedup.json).

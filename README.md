@@ -119,8 +119,9 @@ python tests/spyre_kernel_ab.py
 ```
 
 The existing end-to-end smoke and RadixCache examples remain under `tests/`.
-See [`BENCHMARK.md`](BENCHMARK.md) for the latest measured parity result and
-the machine-readable benchmark record.
+See [`BENCHMARK.md`](BENCHMARK.md) for the latest measured parity result, the
+three-example MMLU comparison against bare PyTorch CPU, and the
+machine-readable benchmark records.
 
 ## License
 
