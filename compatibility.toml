@@ -1,0 +1,8 @@
+# Reproducible compatibility baseline used by CI and hardware benchmarks.
+spyre_inference_revision = "6e5ff996178255ff63acec480cf8fb43ce1e43de"
+torch_spyre_revision = "a31289852145a59099edccc3e506cf5336e8e2e0"
+torch_version = "2.13.0"
+transformers_version = "5.14.1"
+torchvision_version = "0.28.0"
+sglang_version = "0.5.18"
+sglang_revision = "71de97b264b04dcd514cf904003028aefe9775c8"

@@ -9,9 +9,9 @@ class SpyreSRTPlatform(SRTPlatform, SpyreDeviceMixin):
     """SGLang SRT platform for IBM Spyre AIU accelerator.
 
     Execution model:
-    - No CUDA graph capture/replay (eager only for now)
-    - BF16 native compute on AIU 1.5; FP16 label accepted but maps to BF16
-    - KV cache lives on Spyre device; scatter/gather via BMM
+    - No CUDA graph capture/replay
+    - FP16 compute, matching the current spyre-inference compatibility contract
+    - KV cache lives on Spyre in a dense slot-major layout and uses indirect access
     - TP=1 only (TP>1 requires spyreccl all_reduce, not yet stable)
     - Static shapes only (Spyre Inductor cannot handle SymInt)
     """
@@ -26,15 +26,17 @@ class SpyreSRTPlatform(SRTPlatform, SpyreDeviceMixin):
         if not server_args.disable_cuda_graph:
             server_args.disable_cuda_graph = True
 
-        # BF16 is the native compute format on Spyre 1.5
+        # Match spyre-inference: float16 is the supported model/cache dtype.
         if getattr(server_args, "dtype", "auto") == "auto":
-            server_args.dtype = "bfloat16"
+            server_args.dtype = "float16"
 
-        # Default attention backend: torch_native (CPU fallback) until Stage 4
-        # plumbs the BMM-based Spyre attention end-to-end. Users can opt in
-        # to "spyre" by passing --attention-backend spyre explicitly.
+        # The synchronized paged backend is the production-comparable path.
         if getattr(server_args, "attention_backend", None) is None:
-            server_args.attention_backend = "torch_native"
+            server_args.attention_backend = "spyre_paged"
+
+        # The imported spyre-inference kernel requires a stick-aligned page.
+        if getattr(server_args, "page_size", None) is None:
+            server_args.page_size = 64
 
         # TP=1 only
         if getattr(server_args, "tp_size", 1) > 1:
@@ -48,7 +50,7 @@ class SpyreSRTPlatform(SRTPlatform, SpyreDeviceMixin):
     # ------------------------------------------------------------------
 
     def get_default_attention_backend(self) -> str:
-        return "spyre"
+        return "spyre_paged"
 
     def get_graph_runner_cls(self) -> type:
         # Spyre runs eager: support_cuda_graph() returns False, so SGLang core
@@ -63,16 +65,19 @@ class SpyreSRTPlatform(SRTPlatform, SpyreDeviceMixin):
 
     def get_mha_kv_pool_cls(self) -> type:
         from sglang_spyre_backend.memory_pool import SpyreMHATokenToKVPool
+
         return SpyreMHATokenToKVPool
 
     def get_mla_kv_pool_cls(self) -> type:
         # MLA (DeepSeek) not yet supported on Spyre; fall back to MHA
         from sglang_spyre_backend.memory_pool import SpyreMHATokenToKVPool
+
         return SpyreMHATokenToKVPool
 
     def get_dsa_kv_pool_cls(self) -> type:
         # DSA (DeepSeek V3.2) not yet supported
         from sglang_spyre_backend.memory_pool import SpyreMHATokenToKVPool
+
         return SpyreMHATokenToKVPool
 
     def get_paged_allocator_cls(self) -> type:
@@ -83,6 +88,7 @@ class SpyreSRTPlatform(SRTPlatform, SpyreDeviceMixin):
         # page_size>1 (the "spyre_paged" path); page_size=1 uses the non-paged
         # torch allocator, so the dense "spyre" backend is unaffected.
         from sglang_spyre_backend.paged_allocator import SpyrePagedAllocator
+
         return SpyrePagedAllocator
 
     def get_piecewise_backend_cls(self) -> type:
@@ -104,7 +110,7 @@ class SpyreSRTPlatform(SRTPlatform, SpyreDeviceMixin):
         # spyre-inference stack does not yet expose FP8 quantization.
         return False
 
-    def is_pin_memory_available(self) -> bool:
+    def is_pin_memory_available(self, device=None) -> bool:
         # Spyre uses its own allocator; pin_memory is a no-op.
         return False
 
@@ -171,12 +177,14 @@ class SpyreSRTPlatform(SRTPlatform, SpyreDeviceMixin):
         # 2. torch_spyre autoload
         import torch
         import torch_spyre
+
         torch_spyre._autoload()
 
         # 3. pin device + ensure the device-module stubs are present
         if hasattr(torch, "spyre"):
             torch.spyre.set_device(0)
             from sglang_spyre_backend import _install_device_module_stubs
+
             _install_device_module_stubs(torch.spyre)
             # Eagerly CLAIM the single-tenant card in THIS worker process. set_device
             # only records the index; the VFIO open is lazy (first tensor op). Pinning
@@ -198,7 +206,10 @@ class SpyreSRTPlatform(SRTPlatform, SpyreDeviceMixin):
             import sglang_spyre_backend.register  # noqa: F401
         except Exception:
             import logging
-            logging.getLogger(__name__).exception("Spyre op/backend registration failed")
+
+            logging.getLogger(__name__).exception(
+                "Spyre op/backend registration failed"
+            )
 
         # 5. Max-on-Spyre wiring: register MultiPlatformOp Spyre forwards
         #    (RMSNorm/SiluAndMul/RoPE) and install a post-load hook that moves
@@ -207,9 +218,11 @@ class SpyreSRTPlatform(SRTPlatform, SpyreDeviceMixin):
         #    selected device="spyre" — modes 2/3 are unaffected. Idempotent.
         try:
             from sglang_spyre_backend.custom_ops import install as _install_max_on_spyre
+
             _install_max_on_spyre()
         except Exception:
             import logging
+
             logging.getLogger(__name__).exception(
                 "Spyre custom-op installation failed (max-on-Spyre disabled)"
             )
@@ -223,6 +236,7 @@ class SpyreSRTPlatform(SRTPlatform, SpyreDeviceMixin):
         try:
             import torch._inductor.decomposition
             from torch_spyre._inductor.decompositions import spyre_decompositions
+
             for op, impl in spyre_decompositions.items():
                 if "addm" in op.name():
                     torch._inductor.decomposition.decompositions[op] = impl

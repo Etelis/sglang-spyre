@@ -1,4 +1,4 @@
-"""Register Spyre on-device op implementations onto SGLang's MultiPlatformOp surface.
+"""Register Spyre on-device ops ported from current spyre-inference.
 
 The point of this module: when SGLang runs with ``device="spyre"`` the whole
 model body (RMSNorm, activations, RoPE, linear) is materialised on the Spyre
@@ -16,7 +16,7 @@ Reuse strategy (maximal): SGLang's ops are ``MultiPlatformOp`` subclasses whose
 (the canonical Spyre kernels) and adapted from its static-method / forward_oot
 shape to SGLang's bound-method signature.
 
-Provenance: github.com/torch-spyre/spyre-inference (Apache-2.0) @ 29faeb2.
+Provenance: github.com/torch-spyre/spyre-inference (Apache-2.0) @ 6e5ff996.
 Each op below carries a ``Source:`` link to the exact file/lines it was adapted
 from. spyre-inference itself adapts the upstream vLLM/torch ops.
 
@@ -28,9 +28,10 @@ quirk workarounds (e.g. slicing Spyre tensors corrupts memory -> slice on CPU).
 
 from __future__ import annotations
 
+import math
+
 import torch
 import torch.nn.functional as F
-
 from sglang.srt.layers.utils import MultiPlatformOp
 
 SPYRE_KEY = "spyre"
@@ -64,14 +65,8 @@ def _rmsnorm_forward_spyre(self, x, residual=None, post_residual_addition=None):
     else:
         residual_out = None
 
-    # Spyre cannot reduce fp32 (the hardware rejects mean/sum on IEEE_FP32, and
-    # torch_spyre's compiled `mean` lowering may upcast). Granite keeps an fp32
-    # residual/hidden, so on-device we compute the variance in bf16.
-    if x.device.type == "spyre" and x.dtype == torch.float32:
-        x = x.to(torch.bfloat16)
-    eps = torch.full(x.shape, self.variance_epsilon, dtype=x.dtype, device=x.device)
     variance = x.pow(2).mean(dim=-1, keepdim=True)
-    x = x * torch.rsqrt(variance + eps)
+    x = x * torch.rsqrt(variance + self.variance_epsilon)
     if getattr(self, "has_weight", True):
         x = x * self.weight.to(x.dtype)
 
@@ -81,64 +76,65 @@ def _rmsnorm_forward_spyre(self, x, residual=None, post_residual_addition=None):
 
 
 # ---------------------------------------------------------------------------
-# SiluAndMul / GeluAndMul — reuses spyre-inference/custom_ops/silu_and_mul.py.
-# Carry its workaround: slicing a Spyre tensor corrupts memory, so slice on CPU
-# then move the contiguous halves back to the device.
-# Source: torch-spyre/spyre-inference @ 29faeb2 · custom_ops/silu_and_mul.py
-#   forward_oot() — slice-on-CPU then F.silu(x1)*x2 at L87-94:
-#   https://github.com/torch-spyre/spyre-inference/blob/29faeb240801e7793c397ffa80422e0629e80aa9/spyre_inference/custom_ops/silu_and_mul.py#L64-L94
-# (GeluAndMul has no spyre-inference original — same workaround, F.gelu swapped in.)
+# SiluAndMul / GeluAndMul stay device-resident. NewGELU carries the current
+# spyre-inference multiplication workaround for torch-spyre#4009.
 # ---------------------------------------------------------------------------
 def _silu_and_mul_forward_spyre(self, x):
-    dev = x.device
-    if dev.type == "spyre":
-        x = x.to("cpu")
     d = x.shape[-1] // 2
-    x1 = x[..., :d].contiguous().to(dev)
-    x2 = x[..., d:].contiguous().to(dev)
-    return F.silu(x1) * x2
+    return F.silu(x[..., :d]) * x[..., d:]
 
 
 def _gelu_and_mul_forward_spyre(self, x):
-    dev = x.device
-    if dev.type == "spyre":
-        x = x.to("cpu")
     d = x.shape[-1] // 2
-    x1 = x[..., :d].contiguous().to(dev)
-    x2 = x[..., d:].contiguous().to(dev)
-    return F.gelu(x1) * x2
+    return F.gelu(x[..., :d]) * x[..., d:]
+
+
+def _new_gelu_forward_spyre(self, x):
+    """Port of spyre-inference #636; torch.pow(x, 3) is incorrect on Spyre."""
+    c = math.sqrt(2.0 / math.pi)
+    return 0.5 * x * (1.0 + torch.tanh(c * (x + 0.044715 * x * x * x)))
 
 
 # ---------------------------------------------------------------------------
-# RotaryEmbedding — CPU-assisted (reuses spyre-inference/custom_ops/rotary_embedding.py).
-# RoPE's inv_freq / cos-sin cache uses a division that crashes torch_spyre's
-# dxp_standalone compiler when built on-device, so RoPE runs CPU-side: move
-# positions/q/k to CPU, call SGLang's own forward_native, move q/k back. RoPE is
-# a small op; the round-trip is cheap relative to the linear/MLP that stay
-# on-device. The cos_sin_cache is forced to CPU by the OOT patch in
-# rotary_embedding/base.py (init_device="cpu" for OOT).
-# Source: torch-spyre/spyre-inference @ 29faeb2 · custom_ops/rotary_embedding.py
-#   forward() — to-CPU -> forward_native -> back at L46-73:
-#   https://github.com/torch-spyre/spyre-inference/blob/29faeb240801e7793c397ffa80422e0629e80aa9/spyre_inference/custom_ops/rotary_embedding.py#L46-L73
+# RotaryEmbedding uses spyre-inference's device-resident 2x2 formulation. The
+# CPU cache is converted once and subsequent position gathers run on Spyre.
 # ---------------------------------------------------------------------------
-def _rope_forward_spyre(self, positions, query, key=None, offsets=None,
-                        fused_set_kv_buffer_arg=None):
-    # fused KV-buffer path is a CUDA-only optimization; must be absent on Spyre.
-    assert fused_set_kv_buffer_arg is None, "Spyre RoPE: fused_set_kv_buffer unsupported"
-    qdev, qdt = query.device, query.dtype
-    pos_c = positions.to("cpu")
-    q_c = query.to("cpu")
-    k_c = key.to("cpu") if key is not None else None
+def _rotate_neox_2x2(x, rot, head_size):
+    num_tokens = x.shape[0]
+    inner = head_size // 2
+    x_pairs = x.view(num_tokens, -1, 2, inner)
+    out = (rot.unsqueeze(1) * x_pairs.unsqueeze(-3)).sum(dim=-2)
+    return out.flatten(-2).view(x.shape)
+
+
+def _rope_forward_spyre(
+    self,
+    positions,
+    query,
+    key=None,
+    offsets=None,
+    fused_set_kv_buffer_arg=None,
+):
+    """Device-resident 2x2 RoPE from spyre-inference at 6e5ff996."""
+    assert fused_set_kv_buffer_arg is None, "Spyre RoPE: fused KV write unsupported"
     if offsets is not None:
-        out = self.forward_native(pos_c, q_c, k_c, offsets=offsets.to("cpu"))
-    else:
-        out = self.forward_native(pos_c, q_c, k_c)
-    if isinstance(out, tuple):
-        rq, rk = out
-        rq = rq.to(device=qdev, dtype=qdt)
-        rk = rk.to(device=qdev, dtype=qdt) if rk is not None else None
-        return rq, rk
-    return out.to(device=qdev, dtype=qdt)
+        positions = positions + offsets
+    if not (self.is_neox_style and self.rotary_dim == self.head_size):
+        raise NotImplementedError("Spyre supports neox-style full rotary only")
+
+    cache = getattr(self, "_spyre_rotation_cache", None)
+    if cache is None:
+        cos, sin = self.cos_sin_cache.to("cpu").chunk(2, dim=-1)
+        cache_cpu = torch.stack([cos, -sin, sin, cos], dim=1).flatten(1).contiguous()
+        cache = cache_cpu.to(device=query.device, dtype=query.dtype)
+        self._spyre_rotation_cache = cache
+    pos = positions.flatten()
+    if pos.device.type != query.device.type:
+        pos = pos.to(query.device)
+    rot = cache.index_select(0, pos).view(-1, 2, 2, self.head_size // 2)
+    out_query = _rotate_neox_2x2(query, rot, self.head_size)
+    out_key = _rotate_neox_2x2(key, rot, self.head_size) if key is not None else None
+    return out_query, out_key
 
 
 # ---------------------------------------------------------------------------
@@ -161,14 +157,26 @@ def register_spyre_ops() -> list[str]:
     # RMSNorm family (on-device, no fp32 promotion)
     _reg("sglang.srt.layers.layernorm", "RMSNorm", _rmsnorm_forward_spyre)
     _reg("sglang.srt.layers.layernorm", "GemmaRMSNorm", _rmsnorm_forward_spyre)
-    # Activations (on-device, slice-on-cpu workaround)
+    # Activations (on-device)
     _reg("sglang.srt.layers.activation", "SiluAndMul", _silu_and_mul_forward_spyre)
     _reg("sglang.srt.layers.activation", "GeluAndMul", _gelu_and_mul_forward_spyre)
-    # RoPE (CPU-assisted). Only the base RotaryEmbedding is registered.
-    # MultiPlatformOp keys on exact type, so any scaling subclass (linear/
-    # dynamic/YaRN) needs its own _reg entry or it silently falls back to
-    # forward_native on a Spyre tensor. Add them here as models require.
-    _reg("sglang.srt.layers.rotary_embedding.base", "RotaryEmbedding", _rope_forward_spyre)
+    _reg("sglang.srt.layers.activation", "NewGELU", _new_gelu_forward_spyre)
+    # MultiPlatformOp dispatch keys on the concrete class name.
+    _reg(
+        "sglang.srt.layers.rotary_embedding.base",
+        "RotaryEmbedding",
+        _rope_forward_spyre,
+    )
+    _reg(
+        "sglang.srt.layers.rotary_embedding.rope_variant",
+        "Llama3RotaryEmbedding",
+        _rope_forward_spyre,
+    )
+    _reg(
+        "sglang.srt.layers.rotary_embedding.yarn",
+        "YaRNScalingRotaryEmbedding",
+        _rope_forward_spyre,
+    )
 
     return registered
 

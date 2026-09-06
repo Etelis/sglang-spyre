@@ -1,0 +1,141 @@
+{
+  "aggregate": {
+    "geometric_mean_speedup": 0.7393251493059544,
+    "total_mean_latency_speedup": 0.7395373032880647
+  },
+  "batch_size": 1,
+  "environment": {
+    "cluster": "api.dev.spyre.res.ibm.com",
+    "container_image": "us.icr.io/wxpe-cicd-internal/amd64/torch-aiu-runtime-dev:latest",
+    "container_image_digest": "sha256:daa809d6c0487b019bc992e988570be5e358aa9c2b451911074654bbeec2dacd",
+    "node": "p1-worker-50",
+    "sglang_revision": "71de97b264b04dcd514cf904003028aefe9775c8",
+    "spyre_inference_revision": "6e5ff996178255ff63acec480cf8fb43ce1e43de",
+    "torch_spyre_revision": "a31289852145a59099edccc3e506cf5336e8e2e0"
+  },
+  "dataset": "cais/mmlu",
+  "dataset_revision": "c30699e8356da336a370243923dbaf21066bb9fe",
+  "examples": [
+    {
+      "answer": "B",
+      "choices": [
+        "0",
+        "4",
+        "2",
+        "6"
+      ],
+      "input_tokens": 71,
+      "prompt_sha256": "6cce9ddf84adc6e40be6850fb045754910bb7a2aa6ca2aaaf2524d037f9ba328",
+      "pytorch_cpu": {
+        "generated_text": " A",
+        "generated_token_id": 399,
+        "mean_seconds": 0.10130672863063712,
+        "median_seconds": 0.0996539790648967,
+        "samples_seconds": [
+          0.10833316785283387,
+          0.0996539790648967,
+          0.09593303897418082
+        ]
+      },
+      "question": "Find the degree for the given field extension Q(sqrt(2), sqrt(3), sqrt(18)) over Q.",
+      "sglang_spyre": {
+        "generated_text": "\n",
+        "mean_seconds": 0.1357846777730932,
+        "median_seconds": 0.13599722809158266,
+        "samples_seconds": [
+          0.13831935613416135,
+          0.13599722809158266,
+          0.13303744909353554
+        ]
+      },
+      "speedup_over_pytorch_cpu": 0.7460836545926676,
+      "subject": "abstract_algebra",
+      "test_index": 0
+    },
+    {
+      "answer": "A",
+      "choices": [
+        "paralysis of the facial muscles.",
+        "paralysis of the facial muscles and loss of taste.",
+        "paralysis of the facial muscles, loss of taste and lacrimation.",
+        "paralysis of the facial muscles, loss of taste, lacrimation and decreased salivation."
+      ],
+      "input_tokens": 125,
+      "prompt_sha256": "68879619603ddcef95a017845a2654ea4148b95d362340aa94dd649a92f6f7db",
+      "pytorch_cpu": {
+        "generated_text": " A",
+        "generated_token_id": 399,
+        "mean_seconds": 0.12526532805835208,
+        "median_seconds": 0.12554728100076318,
+        "samples_seconds": [
+          0.12581062712706625,
+          0.12443807604722679,
+          0.12554728100076318
+        ]
+      },
+      "question": "A lesion causing compression of the facial nerve at the stylomastoid foramen will cause ipsilateral",
+      "sglang_spyre": {
+        "generated_text": " D",
+        "mean_seconds": 0.16785372459950545,
+        "median_seconds": 0.16744992486201227,
+        "samples_seconds": [
+          0.1666458200197667,
+          0.16744992486201227,
+          0.16946542891673744
+        ]
+      },
+      "speedup_over_pytorch_cpu": 0.7462767261032297,
+      "subject": "anatomy",
+      "test_index": 0
+    },
+    {
+      "answer": "B",
+      "choices": [
+        "0.005 C",
+        "0.01 C",
+        "0.02 C",
+        "0.5 C"
+      ],
+      "input_tokens": 100,
+      "prompt_sha256": "936218601d433a4407c417d72a0c1a7a73c4062492fb43b82f842cfec6c947ab",
+      "pytorch_cpu": {
+        "generated_text": " B",
+        "generated_token_id": 551,
+        "mean_seconds": 0.10675926739349961,
+        "median_seconds": 0.106948581058532,
+        "samples_seconds": [
+          0.10712950699962676,
+          0.10619971412234008,
+          0.106948581058532
+        ]
+      },
+      "question": "The plates of a capacitor are charged to a potential difference of 5 V. If the capacitance is 2 mF, what is the charge on the positive plate?",
+      "sglang_spyre": {
+        "generated_text": " B",
+        "mean_seconds": 0.14709115866571665,
+        "median_seconds": 0.15048823901452124,
+        "samples_seconds": [
+          0.15048823901452124,
+          0.1381121629383415,
+          0.1526730740442872
+        ]
+      },
+      "speedup_over_pytorch_cpu": 0.7258034293966208,
+      "subject": "high_school_physics",
+      "test_index": 0
+    }
+  ],
+  "measured_iterations_per_example": 3,
+  "model": "ibm-ai-platform/micro-g3.3-8b-instruct-1b",
+  "output_tokens": 1,
+  "pytorch_cpu_threads": 96,
+  "software": {
+    "sglang": "0.0.0.dev0",
+    "torch": "2.13.0+cpu",
+    "torch_spyre": "0.0.1",
+    "transformers": "5.14.1"
+  },
+  "split": "test",
+  "timing_scope": "end-to-end generate call after per-shape warmup",
+  "warmup_iterations_per_example": 1
+}

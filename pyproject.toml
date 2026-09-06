@@ -1,20 +1,70 @@
 [build-system]
-requires = ["setuptools>=68", "setuptools_scm>=8"]
+requires = ["setuptools>=77", "setuptools_scm>=8"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "sglang-spyre-backend"
 version = "0.1.0.dev0"
 description = "SGLang backend for IBM Spyre AIU accelerator"
+readme = "README.md"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
 requires-python = ">=3.11"
 dependencies = [
-    "sglang",
-    "torch~=2.11.0",
+    # Keep this compatibility set aligned with spyre-inference.  SGLang 0.5.18
+    # is the first release in this line that pins the same Torch major/minor.
+    "sglang==0.5.18",
+    "torch==2.13.0",
     "torch-spyre",
+    # Imported by SGLang at module load even though Spyre never dispatches it.
+    "triton==3.6.0; sys_platform == 'linux' and platform_machine == 'x86_64'",
+    "torchvision==0.28.0",
 ]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+
+[project.urls]
+Homepage = "https://github.com/torch-spyre/sglang-spyre"
+Repository = "https://github.com/torch-spyre/sglang-spyre"
+Issues = "https://github.com/torch-spyre/sglang-spyre/issues"
+"Spyre Inference" = "https://github.com/torch-spyre/spyre-inference"
+"Torch Spyre" = "https://github.com/torch-spyre/torch-spyre"
+"Upstream SGLang" = "https://github.com/sgl-project/sglang"
+"IBM Spyre" = "https://www.ibm.com/products/spyre-accelerator"
 
 [project.entry-points."sglang.srt.platforms"]
 spyre = "sglang_spyre_backend:activate"
 
 [tool.setuptools.packages.find]
-include = ["sglang_spyre_backend*"]
+include = ["sglang_spyre_backend*", "sglang_oot_patches*"]
+
+[tool.uv]
+prerelease = "allow"
+override-dependencies = [
+    # Align SGLang's fast-moving transitive stack with spyre-inference.
+    "transformers==5.14.1",
+    # Spyre does not use the audio path; its binary wheel is not available in
+    # the runtime image.
+    "torchaudio; sys_platform == 'never'",
+    "torch==2.13.0",
+    "torchvision==0.28.0",
+]
+
+[tool.uv.extra-build-dependencies]
+torch-spyre = ["torch==2.13.0"]
+
+[tool.uv.extra-build-variables.torch-spyre]
+USE_SPYRE_PROFILER = "0"
+
+[tool.uv.sources]
+torch-spyre = { git = "https://github.com/torch-spyre/torch-spyre", rev = "a31289852145a59099edccc3e506cf5336e8e2e0" }
+torch = [{ index = "pytorch-cpu" }]
+torchvision = [{ index = "pytorch-cpu" }]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true

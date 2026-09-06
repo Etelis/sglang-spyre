@@ -24,21 +24,18 @@ pytestmark = pytest.mark.skipif(
 )
 
 
-def test_attention_subclasses_torch_native():
-    from sglang.srt.layers.attention.torch_native_backend import TorchNativeAttnBackend
+def test_paged_attention_uses_framework_neutral_port():
+    from sglang.srt.layers.attention.base_attn_backend import AttentionBackend
 
-    from sglang_spyre_backend.attention_native import SpyreAttnBackend
-
-    assert issubclass(SpyreAttnBackend, TorchNativeAttnBackend), (
-        "SpyreAttnBackend must reuse TorchNativeAttnBackend's gather/save/"
-        "forward plumbing and override only the SDPA seam."
+    from sglang_spyre_backend.attention import SpyreAttentionBackend
+    from sglang_spyre_backend.spyre_attention_kernel import (
+        create_compilable_page_attn,
+        reshape_and_cache_kernel,
     )
-    # The Spyre-specific override must exist...
-    assert "_run_sdpa_forward_extend" in SpyreAttnBackend.__dict__
-    assert "_run_sdpa_forward_decode" in SpyreAttnBackend.__dict__
-    # ...and the inherited entry points must NOT be overridden (proves reuse).
-    assert "forward_extend" not in SpyreAttnBackend.__dict__
-    assert "forward_decode" not in SpyreAttnBackend.__dict__
+
+    assert issubclass(SpyreAttentionBackend, AttentionBackend)
+    assert callable(create_compilable_page_attn)
+    assert callable(reshape_and_cache_kernel)
 
 
 def test_kv_pool_is_real_subclass():
@@ -64,10 +61,12 @@ def test_no_bespoke_graph_runner():
         plat.get_graph_runner_cls()
 
 
-def test_attention_registry_points_at_subclass():
-    # Importing register wires "spyre" → SpyreAttnBackend factory.
+def test_attention_registry_contains_both_paths():
+    # ``spyre_paged`` is the synchronized default; ``spyre`` remains as the
+    # legacy dense fallback while downstream users migrate.
     from sglang.srt.layers.attention.attention_registry import ATTENTION_BACKENDS
 
     import sglang_spyre_backend.register  # noqa: F401  (registers as side effect)
 
     assert "spyre" in ATTENTION_BACKENDS
+    assert "spyre_paged" in ATTENTION_BACKENDS
