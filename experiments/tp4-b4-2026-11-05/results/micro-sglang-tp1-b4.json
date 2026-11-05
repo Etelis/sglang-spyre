@@ -1,0 +1,205 @@
+{
+  "model": "ibm-ai-platform/micro-g3.3-8b-instruct-1b",
+  "framework": "sglang",
+  "tensor_parallel_size": 1,
+  "data_parallel_size": 1,
+  "batch_size": 4,
+  "max_new_tokens": 2,
+  "context_length": 512,
+  "dataset": "cais/mmlu",
+  "dataset_revision": "c30699e8356da336a370243923dbaf21066bb9fe",
+  "max_num_batched_tokens": 512,
+  "prefix_caching": false,
+  "batch_composition": "4 copies of each case",
+  "warmups": 1,
+  "iterations": 1,
+  "model_override": {},
+  "timing_method": "batch completion time; one-token request is a TTFT proxy",
+  "engine_args": {
+    "model_path": "ibm-ai-platform/micro-g3.3-8b-instruct-1b",
+    "device": "cpu",
+    "attention_backend": "spyre_paged",
+    "dtype": "float16",
+    "tp_size": 1,
+    "dp_size": 1,
+    "page_size": 128,
+    "context_length": 512,
+    "max_total_tokens": 2048,
+    "max_running_requests": 4,
+    "chunked_prefill_size": 512,
+    "disable_radix_cache": true,
+    "disable_cuda_graph": true,
+    "random_seed": 0,
+    "log_level": "info",
+    "json_model_override_args": "{}"
+  },
+  "software": {
+    "torch": "2.13.0+cpu",
+    "torch-spyre": "0.1.0.dev2107+head.g64870622",
+    "sglang": "0.5.21",
+    "transformers": "5.16.1"
+  },
+  "examples": [
+    {
+      "subject": "abstract_algebra",
+      "test_index": 0,
+      "answer": "B",
+      "prompt_sha256": "6cce9ddf84adc6e40be6850fb045754910bb7a2aa6ca2aaaf2524d037f9ba328",
+      "input_tokens": 71,
+      "batch_ttft_seconds": [
+        0.05428609700175002
+      ],
+      "batch_latency_seconds": [
+        0.07369758399727289
+      ],
+      "mean_batch_ttft_seconds": 0.05428609700175002,
+      "mean_batch_latency_seconds": 0.07369758399727289,
+      "aggregate_decode_tokens_per_second": 206.0635540658258,
+      "generated_texts": [
+        [
+          " A\n",
+          " A\n",
+          " A\n",
+          " A\n"
+        ]
+      ],
+      "predicted": [
+        [
+          "A",
+          "A",
+          "A",
+          "A"
+        ]
+      ]
+    },
+    {
+      "subject": "anatomy",
+      "test_index": 0,
+      "answer": "A",
+      "prompt_sha256": "68879619603ddcef95a017845a2654ea4148b95d362340aa94dd649a92f6f7db",
+      "input_tokens": 125,
+      "batch_ttft_seconds": [
+        0.05111592000321252
+      ],
+      "batch_latency_seconds": [
+        0.07337574600387597
+      ],
+      "mean_batch_ttft_seconds": 0.05111592000321252,
+      "mean_batch_latency_seconds": 0.07337574600387597,
+      "aggregate_decode_tokens_per_second": 179.69592394301645,
+      "generated_texts": [
+        [
+          " A\n",
+          " A\n",
+          " A\n",
+          " A\n"
+        ]
+      ],
+      "predicted": [
+        [
+          "A",
+          "A",
+          "A",
+          "A"
+        ]
+      ]
+    },
+    {
+      "subject": "high_school_physics",
+      "test_index": 0,
+      "answer": "B",
+      "prompt_sha256": "936218601d433a4407c417d72a0c1a7a73c4062492fb43b82f842cfec6c947ab",
+      "input_tokens": 100,
+      "batch_ttft_seconds": [
+        0.05140525900060311
+      ],
+      "batch_latency_seconds": [
+        0.0746441329974914
+      ],
+      "mean_batch_ttft_seconds": 0.05140525900060311,
+      "mean_batch_latency_seconds": 0.0746441329974914,
+      "aggregate_decode_tokens_per_second": 172.12537924753173,
+      "generated_texts": [
+        [
+          " B\n",
+          " B\n",
+          " B\n",
+          " B\n"
+        ]
+      ],
+      "predicted": [
+        [
+          "B",
+          "B",
+          "B",
+          "B"
+        ]
+      ]
+    },
+    {
+      "subject": "professional_medicine",
+      "test_index": 0,
+      "answer": "C",
+      "prompt_sha256": "8130db82918bbb367e0351fffaedf88561ca017e074674a73c7795b506a080ba",
+      "input_tokens": 320,
+      "batch_ttft_seconds": [
+        0.1501687080017291
+      ],
+      "batch_latency_seconds": [
+        0.23206172699428862
+      ],
+      "mean_batch_ttft_seconds": 0.1501687080017291,
+      "mean_batch_latency_seconds": 0.23206172699428862,
+      "aggregate_decode_tokens_per_second": 48.844212232100325,
+      "generated_texts": [
+        [
+          " A\n",
+          " A\n",
+          " A\n",
+          " A\n"
+        ]
+      ],
+      "predicted": [
+        [
+          "A",
+          "A",
+          "A",
+          "A"
+        ]
+      ]
+    },
+    {
+      "subject": "world_religions",
+      "test_index": 0,
+      "answer": "D",
+      "prompt_sha256": "0b130e5bcc3b5e08a8989d887901d5f7d527e610280fe50d9c856e4eb2d6d889",
+      "input_tokens": 55,
+      "batch_ttft_seconds": [
+        0.05100080700503895
+      ],
+      "batch_latency_seconds": [
+        0.07359854300011648
+      ],
+      "mean_batch_ttft_seconds": 0.05100080700503895,
+      "mean_batch_latency_seconds": 0.07359854300011648,
+      "aggregate_decode_tokens_per_second": 177.00888269830753,
+      "generated_texts": [
+        [
+          " A,",
+          " A,",
+          " A,",
+          " A,"
+        ]
+      ],
+      "predicted": [
+        [
+          "A",
+          "A",
+          "A",
+          "A"
+        ]
+      ]
+    }
+  ],
+  "complete": true
+}

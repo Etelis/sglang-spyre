@@ -1,0 +1,13 @@
+{
+  "model": "google/gemma-4-26B-A4B-it",
+  "framework": "sglang",
+  "tensor_parallel_size": 4,
+  "data_parallel_size": 1,
+  "batch_size": 4,
+  "complete": false,
+  "measured_cases": 0,
+  "failure_time_utc": "2026-11-05T10:05:59Z",
+  "error": "RuntimeError: SpyreCode directory does not exist",
+  "storage_observation": "Generated kernel directories, source, environments, JSON outputs and logs disappeared from the shared experiment directory during compilation. The actor or storage cause is unknown. Completed records had already been copied locally.",
+  "recovery": "Exact cached torch-spyre wheel and local SGLang wheels restored under pod-local /tmp/itay-tp4-recovery; no backend code changes."
+}

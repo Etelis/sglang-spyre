@@ -1,0 +1,326 @@
+{
+  "model": "ibm-granite/granite-3.3-8b-instruct",
+  "framework": "vllm",
+  "tensor_parallel_size": 4,
+  "data_parallel_size": 1,
+  "batch_size": 4,
+  "max_new_tokens": 16,
+  "context_length": 2048,
+  "dataset": "cais/mmlu",
+  "dataset_revision": "c30699e8356da336a370243923dbaf21066bb9fe",
+  "max_num_batched_tokens": 512,
+  "prefix_caching": false,
+  "batch_composition": "four copies of each case",
+  "warmups": 1,
+  "iterations": 3,
+  "software": {
+    "torch": "2.13.0+cpu",
+    "torch-spyre": "0.1.0.dev2107+head.g64870622",
+    "vllm": "0.32.0+empty",
+    "spyre-inference": "0.1.0.dev708+g0ccdbf6a",
+    "transformers": "5.16.1"
+  },
+  "examples": [
+    {
+      "subject": "abstract_algebra",
+      "test_index": 0,
+      "answer": "B",
+      "prompt_sha256": "6cce9ddf84adc6e40be6850fb045754910bb7a2aa6ca2aaaf2524d037f9ba328",
+      "input_tokens": 71,
+      "batch_ttft_seconds": [
+        0.6736473929995554,
+        0.6710203050024575,
+        0.6718603720000829
+      ],
+      "batch_latency_seconds": [
+        1.4631908220035257,
+        1.4551788780008792,
+        1.4623222070003976
+      ],
+      "mean_batch_ttft_seconds": 0.6721760233340319,
+      "mean_batch_latency_seconds": 1.4602306356682675,
+      "aggregate_decode_tokens_per_second": 76.13685531549476,
+      "generated_texts": [
+        [
+          " D\n\nWhich of the following is the correct factorization of the expression ",
+          " D\n\nWhich of the following is the correct factorization of 36",
+          " D\n\nWhich of the following is the correct factorization of the expression ",
+          " D\n\nWhich of the following is the correct factorization of the expression "
+        ],
+        [
+          " D\n\nWhich of the following is the correct factorization of the expression ",
+          " D\n\nWhich of the following is the correct factorization of 36",
+          " D\n\nWhich of the following is the correct factorization of the expression ",
+          " D\n\nWhich of the following is the correct factorization of the expression "
+        ],
+        [
+          " D\n\nWhich of the following is the correct factorization of the expression ",
+          " D\n\nWhich of the following is the correct factorization of 36",
+          " D\n\nWhich of the following is the correct factorization of the expression ",
+          " D\n\nWhich of the following is the correct factorization of the expression "
+        ]
+      ],
+      "predicted": [
+        [
+          "D",
+          "D",
+          "D",
+          "D"
+        ],
+        [
+          "D",
+          "D",
+          "D",
+          "D"
+        ],
+        [
+          "D",
+          "D",
+          "D",
+          "D"
+        ]
+      ]
+    },
+    {
+      "subject": "anatomy",
+      "test_index": 0,
+      "answer": "A",
+      "prompt_sha256": "68879619603ddcef95a017845a2654ea4148b95d362340aa94dd649a92f6f7db",
+      "input_tokens": 125,
+      "batch_ttft_seconds": [
+        0.6712688479965436,
+        0.673592325001664,
+        0.6711818790063262
+      ],
+      "batch_latency_seconds": [
+        1.4629761579999467,
+        1.4645304399964516,
+        1.4633542770025088
+      ],
+      "mean_batch_ttft_seconds": 0.6720143506681779,
+      "mean_batch_latency_seconds": 1.4636202916663024,
+      "aggregate_decode_tokens_per_second": 75.7952876457027,
+      "generated_texts": [
+        [
+          " A\n\nExplanation: The facial nerve (cranial nerve V",
+          " A\n\nExplanation: The facial nerve (cranial nerve V",
+          " A\n\nExplanation: The facial nerve (cranial nerve V",
+          " A\n\nExplanation: The facial nerve (cranial nerve V"
+        ],
+        [
+          " A\n\nExplanation: The facial nerve (cranial nerve V",
+          " A\n\nExplanation: The facial nerve (cranial nerve V",
+          " A\n\nExplanation: The facial nerve (cranial nerve V",
+          " A\n\nExplanation: The facial nerve (cranial nerve V"
+        ],
+        [
+          " A\n\nExplanation: The facial nerve (cranial nerve V",
+          " A\n\nExplanation: The facial nerve (cranial nerve V",
+          " A\n\nExplanation: The facial nerve (cranial nerve V",
+          " A\n\nExplanation: The facial nerve (cranial nerve V"
+        ]
+      ],
+      "predicted": [
+        [
+          "A",
+          "A",
+          "A",
+          "A"
+        ],
+        [
+          "A",
+          "A",
+          "A",
+          "A"
+        ],
+        [
+          "A",
+          "A",
+          "A",
+          "A"
+        ]
+      ]
+    },
+    {
+      "subject": "high_school_physics",
+      "test_index": 0,
+      "answer": "B",
+      "prompt_sha256": "936218601d433a4407c417d72a0c1a7a73c4062492fb43b82f842cfec6c947ab",
+      "input_tokens": 100,
+      "batch_ttft_seconds": [
+        0.674668687999656,
+        0.6710859310041997,
+        0.6718866269948194
+      ],
+      "batch_latency_seconds": [
+        1.4529217559975223,
+        1.4517947510030353,
+        1.4988750939955935
+      ],
+      "mean_batch_ttft_seconds": 0.6725470819995584,
+      "mean_batch_latency_seconds": 1.467863866998717,
+      "aggregate_decode_tokens_per_second": 75.44163675618071,
+      "generated_texts": [
+        [
+          " C\n\nThe charge (Q) on a capacitor can be calculated using",
+          " C\n\nThe charge (Q) on a capacitor can be calculated using",
+          " C\n\nThe charge (Q) on a capacitor can be calculated using",
+          " C\n\nThe charge (Q) on a capacitor can be calculated using"
+        ],
+        [
+          " C\n\nThe charge (Q) on a capacitor can be calculated using",
+          " C\n\nThe charge (Q) on a capacitor can be calculated using",
+          " C\n\nThe charge (Q) on a capacitor can be calculated using",
+          " C\n\nThe charge (Q) on a capacitor can be calculated using"
+        ],
+        [
+          " C\n\nThe charge (Q) on a capacitor can be calculated using",
+          " C\n\nThe charge (Q) on a capacitor can be calculated using",
+          " C\n\nThe charge (Q) on a capacitor can be calculated using",
+          " C\n\nThe charge (Q) on a capacitor can be calculated using"
+        ]
+      ],
+      "predicted": [
+        [
+          "C",
+          "C",
+          "C",
+          "C"
+        ],
+        [
+          "C",
+          "C",
+          "C",
+          "C"
+        ],
+        [
+          "C",
+          "C",
+          "C",
+          "C"
+        ]
+      ]
+    },
+    {
+      "subject": "professional_medicine",
+      "test_index": 0,
+      "answer": "C",
+      "prompt_sha256": "8130db82918bbb367e0351fffaedf88561ca017e074674a73c7795b506a080ba",
+      "input_tokens": 320,
+      "batch_ttft_seconds": [
+        0.7013160569986212,
+        0.7081961709991447,
+        0.7014576269939425
+      ],
+      "batch_latency_seconds": [
+        1.6064286730033928,
+        1.6111273069982417,
+        1.6111899340030504
+      ],
+      "mean_batch_ttft_seconds": 0.7036566183305695,
+      "mean_batch_latency_seconds": 1.609581971334895,
+      "aggregate_decode_tokens_per_second": 66.23062242492901,
+      "generated_texts": [
+        [
+          " C\n\nExplanation: The patient's symptoms of persistent tingling and",
+          " C\n\nExplanation: The patient's symptoms of persistent tingling and",
+          " C\n\nExplanation: The patient's symptoms of persistent tingling and",
+          " C\n\nExplanation: The patient's symptoms of persistent tingling and"
+        ],
+        [
+          " C\n\nExplanation: The patient's symptoms of persistent tingling and",
+          " C\n\nExplanation: The patient's symptoms of persistent tingling and",
+          " C\n\nExplanation: The patient's symptoms of persistent tingling and",
+          " C\n\nExplanation: The patient's symptoms of persistent tingling and"
+        ],
+        [
+          " C\n\nExplanation: The patient's symptoms of persistent tingling and",
+          " C\n\nExplanation: The patient's symptoms of persistent tingling and",
+          " C\n\nExplanation: The patient's symptoms of persistent tingling and",
+          " C\n\nExplanation: The patient's symptoms of persistent tingling and"
+        ]
+      ],
+      "predicted": [
+        [
+          "C",
+          "C",
+          "C",
+          "C"
+        ],
+        [
+          "C",
+          "C",
+          "C",
+          "C"
+        ],
+        [
+          "C",
+          "C",
+          "C",
+          "C"
+        ]
+      ]
+    },
+    {
+      "subject": "world_religions",
+      "test_index": 0,
+      "answer": "D",
+      "prompt_sha256": "0b130e5bcc3b5e08a8989d887901d5f7d527e610280fe50d9c856e4eb2d6d889",
+      "input_tokens": 55,
+      "batch_ttft_seconds": [
+        0.674513238001964,
+        0.6772920089933905,
+        0.6775886039977195
+      ],
+      "batch_latency_seconds": [
+        1.5665539219990023,
+        1.5594021109936875,
+        1.5596185679969494
+      ],
+      "mean_batch_ttft_seconds": 0.6764646169976913,
+      "mean_batch_latency_seconds": 1.5618582003298798,
+      "aggregate_decode_tokens_per_second": 67.76647259424374,
+      "generated_texts": [
+        [
+          " D. Idols\n\n---\n\nWhich of the following is NOT a",
+          " D. Idols\n\n---\n\nWhich of the following is NOT a",
+          " D. Idols\n\n---\n\nWhich of the following is NOT a",
+          " D. Idols\n\n---\n\nWhich of the following is NOT a"
+        ],
+        [
+          " D. Idols\n\n---\n\nWhich of the following is NOT a",
+          " D. Idols\n\n---\n\nWhich of the following is NOT a",
+          " D. Idols\n\n---\n\nWhich of the following is NOT a",
+          " D. Idols\n\n---\n\nWhich of the following is NOT a"
+        ],
+        [
+          " D. Idols\n\n---\n\nWhich of the following is NOT a",
+          " D. Idols\n\n---\n\nWhich of the following is NOT a",
+          " D. Idols\n\n---\n\nWhich of the following is NOT a",
+          " D. Idols\n\n---\n\nWhich of the following is NOT a"
+        ]
+      ],
+      "predicted": [
+        [
+          "D",
+          "D",
+          "D",
+          "D"
+        ],
+        [
+          "D",
+          "D",
+          "D",
+          "D"
+        ],
+        [
+          "D",
+          "D",
+          "D",
+          "D"
+        ]
+      ]
+    }
+  ],
+  "complete": true
+}

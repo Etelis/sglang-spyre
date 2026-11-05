@@ -8,7 +8,8 @@ infrastructure (17), dependency bumps (57), docs (16) and chores (11).
 Each runtime change is listed below by area as **ported**, **not applicable**
 (vLLM scheduler, runner or engine plumbing that SGLang replaces with its own) or
 **out of scope** (a model type or dtype this backend does not serve: pooling,
-multimodal, FP8, speculative decoding, tensor parallelism above 1).
+multimodal, FP8, speculative decoding). The 2026-11-05 addendum below describes
+the experimental single-node TP extension to the original TP1 baseline.
 
 ## Attention: ported
 
@@ -25,17 +26,20 @@ recorder and bucketer around them are ported into `spyre_attention.py` and
 | Attention logit soft-capping in every kernel | #731 |
 | Per-layer KV heads and head size for heterogeneous models (gemma-4) | #874, #960, #1317 |
 | Query row tables, mask stacks mirrored once per step, staging buffers row-outermost | #647, #751, #824, #859, #869, #879, #941, #977 |
-| Bucketer: KV ladder by name, query and batch buckets | #1067, #796 (single-sequence form), #810 |
+| Bucketer: KV ladder by name, query and batch buckets | #1067, #796, #810 |
 | Warmup recording of every variant, one recording per layer group | #707, #798, #871, #875, #1381 |
 | Context-local core cap (`_run_with_capped_cores`) that leaves the rest of the model uncapped | #1413 |
 | KV pages zeroed on the device | #1375 |
 | Compiled kernels at module scope | #799 |
 
-Not applicable: jagged multi-bucket batched decode and the mixed-batch and
-utilisation gates (#832, #838, #1429) only act with several decoding sequences;
-the builder carries the jagged code path's inputs, but the validated
-configuration runs one sequence. The token-major layout (#864's other half) is
-kept upstream only for ALiBi; it is not ported, and neither is ALiBi.
+The adapter handles several decoding sequences and mixed prefill/decode through
+the batched decode prefix and per-sequence fallback. Numerical CPU tests cover
+four requests with different histories, physical pages and local TP head
+counts. The historical model parity baseline remains batch one. Upstream's
+jagged multi-bucket dispatch and mixed-batch/utilisation policies (#832, #838,
+#1429) are not copied as vLLM runner policy. The token-major layout (#864's
+other half) is kept upstream only for ALiBi; it is not ported, and neither is
+ALiBi.
 
 ## MoE: ported
 
@@ -54,8 +58,9 @@ unchanged; only the binding to SGLang's `FusedMoE` is new.
 
 Not applicable: #1175's in-graph MoE runner (`SpyreMoERunner`) is vLLM
 `MoERunner` glue; SGLang calls the experts through an opaque op, the path
-spyre-inference takes for token counts that are not a whole stick. Out of scope:
-#820 (TP sharding of experts).
+spyre-inference takes for token counts that are not a whole stick. The TP expert
+sharding addressed by #820 uses SGLang's native expert weight loader here;
+the adapter sums the resulting partial expert outputs across the TP group.
 
 ## Model adaptations: ported
 
@@ -79,10 +84,14 @@ models (#649, #683, #795, #999, #1015, #1065, #1070, #1142, #1172, #1226,
 | Blocked host transpose of weights | #1327 |
 | Short decode rows of merged gate/up projections padded to 8 | #651 |
 | Transposed-weight base without the 3-D matmul workaround | #823 |
-| Row-padded, tie-safe LM head that keeps the gather table on the host, host logits at TP1 | #633, #653, #745, #784 |
+| Row-padded, tie-safe LM head that keeps the gather table and logits on the host | #633, #653, #745, #784 |
 
-Out of scope: FP8 linear (#545, #814, #841, #946, #1133), the TP logits gather
-(#939, #1283), vocab reindex tables for TP (#648, #728).
+Out of scope: FP8 linear (#545, #814, #841, #946, #1133). TP logits are gathered
+on the host through SGLang's Gloo group and truncated to the true vocabulary.
+For tied Gemma embeddings, the full CPU embedding is preserved and its separate
+Spyre LM-head copy is vocabulary-sharded with equal padded shard widths.
+vLLM's gather plumbing (#939, #1283) and vocabulary reindex tables (#648, #728)
+are not applicable: SGLang owns its vocabulary ordering and gather path.
 
 ## Compile and startup: ported
 
@@ -102,6 +111,50 @@ kernels (#1111), partial-prefill cap (#891), the Model Runner V2 port (#1249,
 #1256, #1277, #1354, #1366, #1382) and the remaining V1-runner refactors move
 code inside vLLM's runner, which SGLang does not use. The traced KV write
 (#610) is replaced by the same write inside the opaque attention op.
+
+## Experimental single-node TP addendum (2026-11-05)
+
+The backend now implements one local FP16 TP world with DP1 and PP1. Worker
+bootstrap publishes the real rank, world size and local device before
+torch-spyre's native libraries load; the Engine parent disables backend
+autoload and carries no TP1 rank defaults. Device collectives use `spyreccl`,
+while CPU control tensors and gathered logits use Gloo. CUDA-specific
+communication paths and overlap scheduling are disabled.
+
+The model runner skips its CPU/AMX shape-padding helper on Spyre. Padding
+Gemma's two global KV heads to four would disable native KV replication and
+make checkpoint loading fail at TP4; its expert dimensions must likewise stay
+at the checkpoint values before Spyre's own weight preparation.
+
+After native TP loading, dense gated MLP shards are zero-padded locally to
+64-element widths. Gemma's gate/up halves and matching down-projection
+columns grow from 528 to 576 lanes without changing rank ownership. This
+adapts the alignment requirement in spyre-inference's `custom_ops/mlp_pad.py`;
+expert padding remains in the separate MoE preparation path.
+
+SGLang's native loaders shard linear and expert weights. Attention consumes
+the resulting local head counts, including Gemma-4's replicated full-attention
+KV heads when the global KV head count is smaller than TP size. The Gemma
+LM-head and expert-output adaptations are described above. DP attention,
+multi-node execution, pipeline parallelism and expert parallelism remain
+outside this path.
+
+The 67 CPU tests cover placement, collective routing, model shards and
+batch-four attention; they passed twice, including in a fresh recovery
+environment. TP1 and TP4 batch-four micro-model canaries each generated two
+tokens for five pinned MMLU prompts, with all 20 decoded responses matching
+an fp32 CPU reference in each configuration.
+
+The TP4/DP1/batch-four benchmark also completed for Granite 3.3 8B and Gemma-4
+text. Mean warmed 16-token batch latencies were 1.479 s versus vLLM's 1.484 s
+for Granite and 2.156 s versus 2.648 s for Gemma. These completed runs do not
+establish identical generated outputs: Granite differs on abstract algebra,
+and Gemma's texts differ while emitted answer letters agree on the other
+four cases. The original measurements remain historical TP1/batch one.
+See [BENCHMARK.md](../BENCHMARK.md), the
+[matched records](../experiments/tp4-b4-2026-11-05/results/matched-summary.json),
+the [README TP4 example](../README.md#run) and the
+[batch-four harness](../experiments/tp4-b4-2026-11-05/sglang_batch_bench.py).
 
 ## KV cache and FP8: out of scope
 

@@ -1,0 +1,331 @@
+{
+  "model": "google/gemma-4-26B-A4B-it",
+  "framework": "vllm",
+  "tensor_parallel_size": 4,
+  "data_parallel_size": 1,
+  "batch_size": 4,
+  "max_new_tokens": 16,
+  "context_length": 2048,
+  "dataset": "cais/mmlu",
+  "dataset_revision": "c30699e8356da336a370243923dbaf21066bb9fe",
+  "max_num_batched_tokens": 512,
+  "prefix_caching": false,
+  "model_override": {
+    "architectures": [
+      "Gemma4ForCausalLM"
+    ]
+  },
+  "batch_composition": "four copies of each case",
+  "warmups": 1,
+  "iterations": 3,
+  "software": {
+    "torch": "2.13.0+cpu",
+    "torch-spyre": "0.1.0.dev2107+head.g64870622",
+    "vllm": "0.32.0+empty",
+    "spyre-inference": "0.1.0.dev708+g0ccdbf6a",
+    "transformers": "5.16.1"
+  },
+  "examples": [
+    {
+      "subject": "abstract_algebra",
+      "test_index": 0,
+      "answer": "B",
+      "prompt_sha256": "6cce9ddf84adc6e40be6850fb045754910bb7a2aa6ca2aaaf2524d037f9ba328",
+      "input_tokens": 70,
+      "batch_ttft_seconds": [
+        1.5020277260045987,
+        1.5059852550039068,
+        1.4936799069982953
+      ],
+      "batch_latency_seconds": [
+        2.672826971000177,
+        2.6337580129984417,
+        2.5855429759976687
+      ],
+      "mean_batch_ttft_seconds": 1.500564296002267,
+      "mean_batch_latency_seconds": 2.6307093199987626,
+      "aggregate_decode_tokens_per_second": 53.090531503491405,
+      "generated_texts": [
+        [
+          " 0\nWait, I'm thinking of a problem where I'll",
+          " 0\nWait, I'm thinking about the degree of the extension.",
+          " 0\nWait, I'm thinking about it.\nA. ",
+          " 0\nFind the degree for the given field extension Q(sqrt(2"
+        ],
+        [
+          " 0\nWait, I'm thinking of a problem where I'll",
+          " 0\nWait, I'm thinking about the degree of the extension.",
+          " 0\nWait, I'm thinking about it.\nA. ",
+          " 0\nFind the degree for the given field extension Q(sqrt(2"
+        ],
+        [
+          " 0\nWait, I'm thinking of a problem where I'll",
+          " 0\nWait, I'm thinking about the degree of the extension.",
+          " 0\nWait, I'm thinking about it.\nA. ",
+          " 0\nFind the degree for the given field extension Q(sqrt(2"
+        ]
+      ],
+      "predicted": [
+        [
+          null,
+          null,
+          "A",
+          null
+        ],
+        [
+          null,
+          null,
+          "A",
+          null
+        ],
+        [
+          null,
+          null,
+          "A",
+          null
+        ]
+      ]
+    },
+    {
+      "subject": "anatomy",
+      "test_index": 0,
+      "answer": "A",
+      "prompt_sha256": "68879619603ddcef95a017845a2654ea4148b95d362340aa94dd649a92f6f7db",
+      "input_tokens": 104,
+      "batch_ttft_seconds": [
+        1.5029167190004955,
+        1.495187212000019,
+        1.50076228800026
+      ],
+      "batch_latency_seconds": [
+        2.5876951039972482,
+        2.6734464330002083,
+        2.6694314350024797
+      ],
+      "mean_batch_ttft_seconds": 1.499622073000258,
+      "mean_batch_latency_seconds": 2.6435243239999786,
+      "aggregate_decode_tokens_per_second": 52.45203420796019,
+      "generated_texts": [
+        [
+          "\n\nA. paralysis of the facial muscles.\nB. paralysis of the facial",
+          "\n\nA. paralysis of the facial muscles.\nB. paralysis of the facial",
+          "\n\nA. paralysis of the facial muscles.\nB. paralysis of the facial",
+          "\n\nA. paralysis of the facial muscles.\nB. paralysis of the facial"
+        ],
+        [
+          "\n\nA. paralysis of the facial muscles.\nB. paralysis of the facial",
+          "\n\nA. paralysis of the facial muscles.\nB. paralysis of the facial",
+          "\n\nA. paralysis of the facial muscles.\nB. paralysis of the facial",
+          "\n\nA. paralysis of the facial muscles.\nB. paralysis of the facial"
+        ],
+        [
+          "\n\nA. paralysis of the facial muscles.\nB. paralysis of the facial",
+          "\n\nA. paralysis of the facial muscles.\nB. paralysis of the facial",
+          "\n\nA. paralysis of the facial muscles.\nB. paralysis of the facial",
+          "\n\nA. paralysis of the facial muscles.\nB. paralysis of the facial"
+        ]
+      ],
+      "predicted": [
+        [
+          "A",
+          "A",
+          "A",
+          "A"
+        ],
+        [
+          "A",
+          "A",
+          "A",
+          "A"
+        ],
+        [
+          "A",
+          "A",
+          "A",
+          "A"
+        ]
+      ]
+    },
+    {
+      "subject": "high_school_physics",
+      "test_index": 0,
+      "answer": "B",
+      "prompt_sha256": "936218601d433a4407c417d72a0c1a7a73c4062492fb43b82f842cfec6c947ab",
+      "input_tokens": 94,
+      "batch_ttft_seconds": [
+        1.496123200005968,
+        1.4972698029960156,
+        1.4978436109959148
+      ],
+      "batch_latency_seconds": [
+        2.6542686079992563,
+        2.6607027189966175,
+        2.6660049950005487
+      ],
+      "mean_batch_ttft_seconds": 1.4970788713326328,
+      "mean_batch_latency_seconds": 2.660325440665474,
+      "aggregate_decode_tokens_per_second": 51.57977816724781,
+      "generated_texts": [
+        [
+          " A\nThe plates of a capacitor are charged to a potential difference of 5",
+          " A\nThe plates of a capacitor are charged to a potential difference of 5",
+          " A\nThe plates of a capacitor are charged to a potential difference of 5",
+          " A\nThe plates of a capacitor are charged to a potential difference of 5"
+        ],
+        [
+          " A\nThe plates of a capacitor are charged to a potential difference of 5",
+          " A\nThe plates of a capacitor are charged to a potential difference of 5",
+          " A\nThe plates of a capacitor are charged to a potential difference of 5",
+          " A\nThe plates of a capacitor are charged to a potential difference of 5"
+        ],
+        [
+          " A\nThe plates of a capacitor are charged to a potential difference of 5",
+          " A\nThe plates of a capacitor are charged to a potential difference of 5",
+          " A\nThe plates of a capacitor are charged to a potential difference of 5",
+          " A\nThe plates of a capacitor are charged to a potential difference of 5"
+        ]
+      ],
+      "predicted": [
+        [
+          "A",
+          "A",
+          "A",
+          "A"
+        ],
+        [
+          "A",
+          "A",
+          "A",
+          "A"
+        ],
+        [
+          "A",
+          "A",
+          "A",
+          "A"
+        ]
+      ]
+    },
+    {
+      "subject": "professional_medicine",
+      "test_index": 0,
+      "answer": "C",
+      "prompt_sha256": "8130db82918bbb367e0351fffaedf88561ca017e074674a73c7795b506a080ba",
+      "input_tokens": 259,
+      "batch_ttft_seconds": [
+        1.5204896599971107,
+        1.5148926629990456,
+        1.5146505480006454
+      ],
+      "batch_latency_seconds": [
+        2.700467413000297,
+        2.6722122130013304,
+        2.675801101999241
+      ],
+      "mean_batch_ttft_seconds": 1.5166776236656005,
+      "mean_batch_latency_seconds": 2.6828269093336226,
+      "aggregate_decode_tokens_per_second": 51.45138854638953,
+      "generated_texts": [
+        [
+          "\n\nA 67-year-old woman comes to the|\nA",
+          "\n\nA 67-year-old woman comes to the follows. She",
+          "\n\nA 67-year-old woman comes to the|\nA",
+          "\n\nA 67-year-old woman comes to the|\nA"
+        ],
+        [
+          "\n\nA 67-year-old woman comes to the|\nA",
+          "\n\nA 67-year-old woman comes to the follows. She",
+          "\n\nA 67-year-old woman comes to the|\nA",
+          "\n\nA 67-year-old woman comes to the|\nA"
+        ],
+        [
+          "\n\nA 67-year-old woman comes to the|\nA",
+          "\n\nA 67-year-old woman comes to the follows. She",
+          "\n\nA 67-year-old woman comes to the|\nA",
+          "\n\nA 67-year-old woman comes to the|\nA"
+        ]
+      ],
+      "predicted": [
+        [
+          "A",
+          "A",
+          "A",
+          "A"
+        ],
+        [
+          "A",
+          "A",
+          "A",
+          "A"
+        ],
+        [
+          "A",
+          "A",
+          "A",
+          "A"
+        ]
+      ]
+    },
+    {
+      "subject": "world_religions",
+      "test_index": 0,
+      "answer": "D",
+      "prompt_sha256": "0b130e5bcc3b5e08a8989d887901d5f7d527e610280fe50d9c856e4eb2d6d889",
+      "input_tokens": 53,
+      "batch_ttft_seconds": [
+        1.5005676529981429,
+        1.4969548849985586,
+        1.4959379229985643
+      ],
+      "batch_latency_seconds": [
+        2.6649990220030304,
+        2.5878816909971647,
+        2.6094063440032187
+      ],
+      "mean_batch_ttft_seconds": 1.4978201536650886,
+      "mean_batch_latency_seconds": 2.6207623523344714,
+      "aggregate_decode_tokens_per_second": 53.4310671298098,
+      "generated_texts": [
+        [
+          " A\nExplanation: A. Offerings. A. Offerings. A.",
+          " A\nExplanation: A. Offerings. A. Offerings. A.",
+          " A\nExplanation: A. Offerings. A. Offerings. A.",
+          " A\nExplanation: A. Offerings. A. Offerings. A."
+        ],
+        [
+          " A\nExplanation: A. Offerings. A. Offerings. A.",
+          " A\nExplanation: A. Offerings. A. Offerings. A.",
+          " A\nExplanation: A. Offerings. A. Offerings. A.",
+          " A\nExplanation: A. Offerings. A. Offerings. A."
+        ],
+        [
+          " A\nExplanation: A. Offerings. A. Offerings. A.",
+          " A\nExplanation: A. Offerings. A. Offerings. A.",
+          " A\nExplanation: A. Offerings. A. Offerings. A.",
+          " A\nExplanation: A. Offerings. A. Offerings. A."
+        ]
+      ],
+      "predicted": [
+        [
+          "A",
+          "A",
+          "A",
+          "A"
+        ],
+        [
+          "A",
+          "A",
+          "A",
+          "A"
+        ],
+        [
+          "A",
+          "A",
+          "A",
+          "A"
+        ]
+      ]
+    }
+  ],
+  "complete": true
+}

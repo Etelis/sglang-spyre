@@ -1,0 +1,349 @@
+{
+  "model": "google/gemma-4-26B-A4B-it",
+  "framework": "sglang",
+  "tensor_parallel_size": 4,
+  "data_parallel_size": 1,
+  "batch_size": 4,
+  "max_new_tokens": 16,
+  "context_length": 2048,
+  "dataset": "cais/mmlu",
+  "dataset_revision": "c30699e8356da336a370243923dbaf21066bb9fe",
+  "max_num_batched_tokens": 512,
+  "prefix_caching": false,
+  "batch_composition": "4 copies of each case",
+  "warmups": 1,
+  "iterations": 3,
+  "model_override": {
+    "architectures": [
+      "Gemma4ForCausalLM"
+    ]
+  },
+  "timing_method": "batch completion time; one-token request is a TTFT proxy",
+  "engine_args": {
+    "model_path": "google/gemma-4-26B-A4B-it",
+    "device": "cpu",
+    "attention_backend": "spyre_paged",
+    "dtype": "float16",
+    "tp_size": 4,
+    "dp_size": 1,
+    "page_size": 128,
+    "context_length": 2048,
+    "max_total_tokens": 8192,
+    "max_running_requests": 4,
+    "chunked_prefill_size": 512,
+    "disable_radix_cache": true,
+    "disable_cuda_graph": true,
+    "random_seed": 0,
+    "log_level": "warning",
+    "json_model_override_args": "{\"architectures\": [\"Gemma4ForCausalLM\"]}"
+  },
+  "software": {
+    "torch": "2.13.0+cpu",
+    "torch-spyre": "0.1.0.dev2107+head.g64870622",
+    "sglang": "0.5.21",
+    "transformers": "5.16.1"
+  },
+  "examples": [
+    {
+      "subject": "abstract_algebra",
+      "test_index": 0,
+      "answer": "B",
+      "prompt_sha256": "6cce9ddf84adc6e40be6850fb045754910bb7a2aa6ca2aaaf2524d037f9ba328",
+      "input_tokens": 70,
+      "batch_ttft_seconds": [
+        0.4363129709963687,
+        0.42611912899883464,
+        0.4271986259991536
+      ],
+      "batch_latency_seconds": [
+        1.6652805900012027,
+        2.316780329994799,
+        1.6617426320008235
+      ],
+      "mean_batch_ttft_seconds": 0.4298769086647856,
+      "mean_batch_latency_seconds": 1.8812678506656084,
+      "aggregate_decode_tokens_per_second": 41.33965444023419,
+      "generated_texts": [
+        [
+          " 0\nWait, I'm thinking about the degree of the field extension",
+          " 0\nWait, I'm thinking about the degree of the field extension",
+          " 0\nWait, I'm thinking about the degree of the field extension",
+          " 0\nWait, I'm thinking about the degree of the field extension"
+        ],
+        [
+          " 0\nWait, I'm thinking about the degree of the field extension",
+          " 0\nWait, I'm thinking about the degree of the field extension",
+          " 0\nWait, I'm thinking about the degree of the field extension",
+          " 0\nWait, I'm thinking about the degree of the field extension"
+        ],
+        [
+          " 0\nWait, I'm thinking about the degree of the field extension",
+          " 0\nWait, I'm thinking about the degree of the field extension",
+          " 0\nWait, I'm thinking about the degree of the field extension",
+          " 0\nWait, I'm thinking about the degree of the field extension"
+        ]
+      ],
+      "predicted": [
+        [
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          null,
+          null,
+          null,
+          null
+        ]
+      ]
+    },
+    {
+      "subject": "anatomy",
+      "test_index": 0,
+      "answer": "A",
+      "prompt_sha256": "68879619603ddcef95a017845a2654ea4148b95d362340aa94dd649a92f6f7db",
+      "input_tokens": 104,
+      "batch_ttft_seconds": [
+        0.43390285699570086,
+        0.4312577250020695,
+        0.4319416439975612
+      ],
+      "batch_latency_seconds": [
+        2.4482700250009657,
+        1.6686465899983887,
+        1.688107829002547
+      ],
+      "mean_batch_ttft_seconds": 0.43236740866511053,
+      "mean_batch_latency_seconds": 1.9350081480006338,
+      "aggregate_decode_tokens_per_second": 39.92970403992398,
+      "generated_texts": [
+        [
+          "\n\nA lesion causing compression of the facial nerve at the stylomastoid for",
+          "\n\nA lesion causing compression of the facial nerve at the stylomastoid for",
+          "\n\nA lesion causing compression of the facial nerve at the stylomastoid for",
+          "\n\nA lesion causing compression of the facial nerve at the stylomastoid for"
+        ],
+        [
+          "\n\nA lesion causing compression of the facial nerve at the stylomastoid for",
+          "\n\nA lesion causing compression of the facial nerve at the stylomastoid for",
+          "\n\nA lesion causing compression of the facial nerve at the stylomastoid for",
+          "\n\nA lesion causing compression of the facial nerve at the stylomastoid for"
+        ],
+        [
+          "\n\nA lesion causing compression of the facial nerve at the stylomastoid for",
+          "\n\nA lesion causing compression of the facial nerve at the stylomastoid for",
+          "\n\nA lesion causing compression of the facial nerve at the stylomastoid for",
+          "\n\nA lesion causing compression of the facial nerve at the stylomastoid for"
+        ]
+      ],
+      "predicted": [
+        [
+          "A",
+          "A",
+          "A",
+          "A"
+        ],
+        [
+          "A",
+          "A",
+          "A",
+          "A"
+        ],
+        [
+          "A",
+          "A",
+          "A",
+          "A"
+        ]
+      ]
+    },
+    {
+      "subject": "high_school_physics",
+      "test_index": 0,
+      "answer": "B",
+      "prompt_sha256": "936218601d433a4407c417d72a0c1a7a73c4062492fb43b82f842cfec6c947ab",
+      "input_tokens": 94,
+      "batch_ttft_seconds": [
+        0.4365115539985709,
+        0.4261407039957703,
+        0.4445588430025964
+      ],
+      "batch_latency_seconds": [
+        1.6707766630061087,
+        1.6993827009937377,
+        1.809135741998034
+      ],
+      "mean_batch_ttft_seconds": 0.43573703366564587,
+      "mean_batch_latency_seconds": 1.7264317019992934,
+      "aggregate_decode_tokens_per_second": 46.48659475556915,
+      "generated_texts": [
+        [
+          " A\n\nThe plates of a capacitor are charged to a potential difference of 5",
+          " A\n\nThe plates of a capacitor are charged to a potential difference of 5",
+          " A\n\nThe plates of a capacitor are charged to a potential difference of 5",
+          " A\n\nThe plates of a capacitor are charged to a potential difference of 5"
+        ],
+        [
+          " A\n\nThe plates of a capacitor are charged to a potential difference of 5",
+          " A\n\nThe plates of a capacitor are charged to a potential difference of 5",
+          " A\n\nThe plates of a capacitor are charged to a potential difference of 5",
+          " A\n\nThe plates of a capacitor are charged to a potential difference of 5"
+        ],
+        [
+          " A\n\nThe plates of a capacitor are charged to a potential difference of 5",
+          " A\n\nThe plates of a capacitor are charged to a potential difference of 5",
+          " A\n\nThe plates of a capacitor are charged to a potential difference of 5",
+          " A\n\nThe plates of a capacitor are charged to a potential difference of 5"
+        ]
+      ],
+      "predicted": [
+        [
+          "A",
+          "A",
+          "A",
+          "A"
+        ],
+        [
+          "A",
+          "A",
+          "A",
+          "A"
+        ],
+        [
+          "A",
+          "A",
+          "A",
+          "A"
+        ]
+      ]
+    },
+    {
+      "subject": "professional_medicine",
+      "test_index": 0,
+      "answer": "C",
+      "prompt_sha256": "8130db82918bbb367e0351fffaedf88561ca017e074674a73c7795b506a080ba",
+      "input_tokens": 259,
+      "batch_ttft_seconds": [
+        1.2261622919977526,
+        1.231264601003204,
+        1.2304940269968938
+      ],
+      "batch_latency_seconds": [
+        3.632261569997354,
+        3.5664433810015908,
+        3.474520145995484
+      ],
+      "mean_batch_ttft_seconds": 1.2293069733326167,
+      "mean_batch_latency_seconds": 3.557741698998143,
+      "aggregate_decode_tokens_per_second": 25.768383944218346,
+      "generated_texts": [
+        [
+          "\n\nA 67-year-old woman comes to the physician for a",
+          "\n\nA 67-year-old woman comes to the physician for a",
+          "\n\nA 67-year-old woman comes to the physician for a",
+          "\n\nA 67-year-old woman comes to thethethethe"
+        ],
+        [
+          "\n\nA 67-year-old woman comes to the physician for a",
+          "\n\nA 67-year-old woman comes to the physician for a",
+          "\n\nA 67-year-old woman comes to the physician for a",
+          "\n\nA 67-year-old woman comes to thethethethe"
+        ],
+        [
+          "\n\nA 67-year-old woman comes to the physician for a",
+          "\n\nA 67-year-old woman comes to the physician for a",
+          "\n\nA 67-year-old woman comes to the physician for a",
+          "\n\nA 67-year-old woman comes to thethethethe"
+        ]
+      ],
+      "predicted": [
+        [
+          "A",
+          "A",
+          "A",
+          "A"
+        ],
+        [
+          "A",
+          "A",
+          "A",
+          "A"
+        ],
+        [
+          "A",
+          "A",
+          "A",
+          "A"
+        ]
+      ]
+    },
+    {
+      "subject": "world_religions",
+      "test_index": 0,
+      "answer": "D",
+      "prompt_sha256": "0b130e5bcc3b5e08a8989d887901d5f7d527e610280fe50d9c856e4eb2d6d889",
+      "input_tokens": 53,
+      "batch_ttft_seconds": [
+        0.4237457510025706,
+        0.4253199239974492,
+        0.42380722999951104
+      ],
+      "batch_latency_seconds": [
+        1.6432380149999517,
+        1.696185332002642,
+        1.691823265995481
+      ],
+      "mean_batch_ttft_seconds": 0.424290968333177,
+      "mean_batch_latency_seconds": 1.6770822043326916,
+      "aggregate_decode_tokens_per_second": 47.89305534383803,
+      "generated_texts": [
+        [
+          " A\n```\n\nWait, I'm not sure if I'm giving",
+          " A\n```\n\nWait, I'm not sure if I'm giving",
+          " A\n```\n\nWait, I'm not sure if I'm giving",
+          " A\n```\n\nWait, I'm not sure if I'm giving"
+        ],
+        [
+          " A\n```\n\nWait, I'm not sure if I'm giving",
+          " A\n```\n\nWait, I'm not sure if I'm giving",
+          " A\n```\n\nWait, I'm not sure if I'm giving",
+          " A\n```\n\nWait, I'm not sure if I'm giving"
+        ],
+        [
+          " A\n```\n\nWait, I'm not sure if I'm giving",
+          " A\n```\n\nWait, I'm not sure if I'm giving",
+          " A\n```\n\nWait, I'm not sure if I'm giving",
+          " A\n```\n\nWait, I'm not sure if I'm giving"
+        ]
+      ],
+      "predicted": [
+        [
+          "A",
+          "A",
+          "A",
+          "A"
+        ],
+        [
+          "A",
+          "A",
+          "A",
+          "A"
+        ],
+        [
+          "A",
+          "A",
+          "A",
+          "A"
+        ]
+      ]
+    }
+  ],
+  "complete": true
+}

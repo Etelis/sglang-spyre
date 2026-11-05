@@ -1,0 +1,545 @@
+{
+  "timing_method": "Warmed batch completion latency; the one-token batch is a TTFT proxy. Aggregate decode throughput is 4*15/(mean 16-token latency - mean 1-token latency) per case, then averaged across five pinned MMLU cases.",
+  "models": {
+    "granite": {
+      "sglang": {
+        "mean_batch_ttft_seconds": 0.305164404201787,
+        "mean_batch_latency_seconds": 1.4785187407338527,
+        "aggregate_decode_tokens_per_second": 56.12802591912519,
+        "answer_variation": []
+      },
+      "vllm": {
+        "mean_batch_ttft_seconds": 0.6813866807987021,
+        "mean_batch_latency_seconds": 1.4835409910005788,
+        "aggregate_decode_tokens_per_second": 74.80532773395689,
+        "answer_variation": []
+      },
+      "configuration": {
+        "model": "ibm-granite/granite-3.3-8b-instruct",
+        "tensor_parallel_size": 4,
+        "data_parallel_size": 1,
+        "batch_size": 4,
+        "max_new_tokens": 16,
+        "context_length": 2048,
+        "dataset_revision": "c30699e8356da336a370243923dbaf21066bb9fe",
+        "iterations": 3,
+        "warmups": 1,
+        "max_num_batched_tokens": 512,
+        "prefix_caching": false,
+        "model_override": {}
+      },
+      "sglang_over_vllm_latency": 0.9966146872265802,
+      "output_comparison": [
+        {
+          "subject": "abstract_algebra",
+          "gold": "B",
+          "sglang_predicted": [
+            [
+              "D",
+              "D",
+              "D",
+              "D"
+            ],
+            [
+              "D",
+              "D",
+              "D",
+              "D"
+            ],
+            [
+              "D",
+              "D",
+              "D",
+              "D"
+            ]
+          ],
+          "vllm_predicted": [
+            [
+              "B",
+              "B",
+              "B",
+              "B"
+            ],
+            [
+              "B",
+              "B",
+              "B",
+              "B"
+            ],
+            [
+              "B",
+              "B",
+              "B",
+              "B"
+            ]
+          ],
+          "identical_text_slots": 0
+        },
+        {
+          "subject": "anatomy",
+          "gold": "A",
+          "sglang_predicted": [
+            [
+              "A",
+              "A",
+              "A",
+              "A"
+            ],
+            [
+              "A",
+              "A",
+              "A",
+              "A"
+            ],
+            [
+              "A",
+              "A",
+              "A",
+              "A"
+            ]
+          ],
+          "vllm_predicted": [
+            [
+              "A",
+              "A",
+              "A",
+              "A"
+            ],
+            [
+              "A",
+              "A",
+              "A",
+              "A"
+            ],
+            [
+              "A",
+              "A",
+              "A",
+              "A"
+            ]
+          ],
+          "identical_text_slots": 12
+        },
+        {
+          "subject": "high_school_physics",
+          "gold": "B",
+          "sglang_predicted": [
+            [
+              "C",
+              "C",
+              "C",
+              "C"
+            ],
+            [
+              "C",
+              "C",
+              "C",
+              "C"
+            ],
+            [
+              "C",
+              "C",
+              "C",
+              "C"
+            ]
+          ],
+          "vllm_predicted": [
+            [
+              "C",
+              "C",
+              "C",
+              "C"
+            ],
+            [
+              "C",
+              "C",
+              "C",
+              "C"
+            ],
+            [
+              "C",
+              "C",
+              "C",
+              "C"
+            ]
+          ],
+          "identical_text_slots": 9
+        },
+        {
+          "subject": "professional_medicine",
+          "gold": "C",
+          "sglang_predicted": [
+            [
+              "C",
+              "C",
+              "C",
+              "C"
+            ],
+            [
+              "C",
+              "C",
+              "C",
+              "C"
+            ],
+            [
+              "C",
+              "C",
+              "C",
+              "C"
+            ]
+          ],
+          "vllm_predicted": [
+            [
+              "C",
+              "C",
+              "C",
+              "C"
+            ],
+            [
+              "C",
+              "C",
+              "C",
+              "C"
+            ],
+            [
+              "C",
+              "C",
+              "C",
+              "C"
+            ]
+          ],
+          "identical_text_slots": 12
+        },
+        {
+          "subject": "world_religions",
+          "gold": "D",
+          "sglang_predicted": [
+            [
+              "D",
+              "D",
+              "D",
+              "D"
+            ],
+            [
+              "D",
+              "D",
+              "D",
+              "D"
+            ],
+            [
+              "D",
+              "D",
+              "D",
+              "D"
+            ]
+          ],
+          "vllm_predicted": [
+            [
+              "D",
+              "D",
+              "D",
+              "D"
+            ],
+            [
+              "D",
+              "D",
+              "D",
+              "D"
+            ],
+            [
+              "D",
+              "D",
+              "D",
+              "D"
+            ]
+          ],
+          "identical_text_slots": 12
+        }
+      ]
+    },
+    "gemma": {
+      "sglang": {
+        "mean_batch_ttft_seconds": 0.5903158585322672,
+        "mean_batch_latency_seconds": 2.155506320799274,
+        "aggregate_decode_tokens_per_second": 40.283478504756744,
+        "answer_variation": []
+      },
+      "vllm": {
+        "mean_batch_ttft_seconds": 1.5023526035331694,
+        "mean_batch_latency_seconds": 2.647629669266462,
+        "aggregate_decode_tokens_per_second": 52.40095991097974,
+        "answer_variation": [
+          {
+            "subject": "abstract_algebra",
+            "predicted": [
+              [
+                null,
+                null,
+                "A",
+                null
+              ],
+              [
+                null,
+                null,
+                "A",
+                null
+              ],
+              [
+                null,
+                null,
+                "A",
+                null
+              ]
+            ]
+          }
+        ]
+      },
+      "configuration": {
+        "model": "google/gemma-4-26B-A4B-it",
+        "tensor_parallel_size": 4,
+        "data_parallel_size": 1,
+        "batch_size": 4,
+        "max_new_tokens": 16,
+        "context_length": 2048,
+        "dataset_revision": "c30699e8356da336a370243923dbaf21066bb9fe",
+        "iterations": 3,
+        "warmups": 1,
+        "max_num_batched_tokens": 512,
+        "prefix_caching": false,
+        "model_override": {
+          "architectures": [
+            "Gemma4ForCausalLM"
+          ]
+        }
+      },
+      "sglang_over_vllm_latency": 0.8141268191017316,
+      "output_comparison": [
+        {
+          "subject": "abstract_algebra",
+          "gold": "B",
+          "sglang_predicted": [
+            [
+              null,
+              null,
+              null,
+              null
+            ],
+            [
+              null,
+              null,
+              null,
+              null
+            ],
+            [
+              null,
+              null,
+              null,
+              null
+            ]
+          ],
+          "vllm_predicted": [
+            [
+              null,
+              null,
+              "A",
+              null
+            ],
+            [
+              null,
+              null,
+              "A",
+              null
+            ],
+            [
+              null,
+              null,
+              "A",
+              null
+            ]
+          ],
+          "identical_text_slots": 0
+        },
+        {
+          "subject": "anatomy",
+          "gold": "A",
+          "sglang_predicted": [
+            [
+              "A",
+              "A",
+              "A",
+              "A"
+            ],
+            [
+              "A",
+              "A",
+              "A",
+              "A"
+            ],
+            [
+              "A",
+              "A",
+              "A",
+              "A"
+            ]
+          ],
+          "vllm_predicted": [
+            [
+              "A",
+              "A",
+              "A",
+              "A"
+            ],
+            [
+              "A",
+              "A",
+              "A",
+              "A"
+            ],
+            [
+              "A",
+              "A",
+              "A",
+              "A"
+            ]
+          ],
+          "identical_text_slots": 0
+        },
+        {
+          "subject": "high_school_physics",
+          "gold": "B",
+          "sglang_predicted": [
+            [
+              "A",
+              "A",
+              "A",
+              "A"
+            ],
+            [
+              "A",
+              "A",
+              "A",
+              "A"
+            ],
+            [
+              "A",
+              "A",
+              "A",
+              "A"
+            ]
+          ],
+          "vllm_predicted": [
+            [
+              "A",
+              "A",
+              "A",
+              "A"
+            ],
+            [
+              "A",
+              "A",
+              "A",
+              "A"
+            ],
+            [
+              "A",
+              "A",
+              "A",
+              "A"
+            ]
+          ],
+          "identical_text_slots": 0
+        },
+        {
+          "subject": "professional_medicine",
+          "gold": "C",
+          "sglang_predicted": [
+            [
+              "A",
+              "A",
+              "A",
+              "A"
+            ],
+            [
+              "A",
+              "A",
+              "A",
+              "A"
+            ],
+            [
+              "A",
+              "A",
+              "A",
+              "A"
+            ]
+          ],
+          "vllm_predicted": [
+            [
+              "A",
+              "A",
+              "A",
+              "A"
+            ],
+            [
+              "A",
+              "A",
+              "A",
+              "A"
+            ],
+            [
+              "A",
+              "A",
+              "A",
+              "A"
+            ]
+          ],
+          "identical_text_slots": 0
+        },
+        {
+          "subject": "world_religions",
+          "gold": "D",
+          "sglang_predicted": [
+            [
+              "A",
+              "A",
+              "A",
+              "A"
+            ],
+            [
+              "A",
+              "A",
+              "A",
+              "A"
+            ],
+            [
+              "A",
+              "A",
+              "A",
+              "A"
+            ]
+          ],
+          "vllm_predicted": [
+            [
+              "A",
+              "A",
+              "A",
+              "A"
+            ],
+            [
+              "A",
+              "A",
+              "A",
+              "A"
+            ],
+            [
+              "A",
+              "A",
+              "A",
+              "A"
+            ]
+          ],
+          "identical_text_slots": 0
+        }
+      ]
+    }
+  }
+}

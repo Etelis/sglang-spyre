@@ -35,10 +35,11 @@ lock for the same bundle and passes its `scripts/lock_spyre_rpms.py --verify`.
 ## Supported models
 
 The backend ports spyre-inference's Spyre implementation of every model
-mechanism its text decoders use. "Validated" means the model was run end to end
-on a Spyre card with this baseline and its greedy output compared with
-spyre-inference/vLLM on the same card; "runs" means the architecture loads
-through the same code paths but was not part of that comparison.
+mechanism its text decoders use. The table records the historical 2026-11-01
+TP1, batch-one baseline. "Validated" means the model was run end to end on a
+Spyre card and its greedy output compared with spyre-inference/vLLM on the
+same card; "runs" means the architecture loads through the same code paths
+but was not part of that comparison.
 
 | Model | spyre-inference registry | SGLang status |
 |---|---|---|
@@ -50,8 +51,25 @@ through the same code paths but was not part of that comparison.
 | `ibm-granite/granite-vision-4.1-4b` | TP1 | Not supported: vision towers are not ported. |
 | Embedding, reranker and classifier models | various | Not applicable: SGLang text generation only. |
 
-Tensor parallelism above 1 is not supported; spyre-inference's TP4 configs run
-here at TP1 when they fit one card (Gemma-4-26B-A4B uses about 52 GB of 112 GB).
+Experimental single-node tensor parallelism is implemented for FP16, with
+data and pipeline parallel sizes both 1. The 67 CPU tests passed twice,
+including in a fresh recovery environment. On
+`ibm-ai-platform/micro-g3.3-8b-instruct-1b`, TP1 and TP4 batch-four canaries
+each matched an fp32 CPU reference on all 20 decoded two-token responses.
+
+The TP4/DP1/batch-four benchmark completed for both larger models, using
+five pinned MMLU cases, 16 greedy tokens per request and warmup excluded:
+
+| Model | SGLang mean batch latency | vLLM mean batch latency |
+|---|---:|---:|
+| Granite 3.3 8B | 1.479 s | 1.484 s |
+| Gemma 4 26B-A4B (text) | 2.156 s | 2.648 s |
+
+Completion does not imply identical outputs: Granite differs on abstract
+algebra, and Gemma's texts differ while emitted answer letters agree on the
+other four cases. See [BENCHMARK.md](BENCHMARK.md) and the
+[matched results](experiments/tp4-b4-2026-11-05/results/matched-summary.json)
+for the full timing and output comparison.
 
 ## What is synchronized
 
@@ -83,6 +101,11 @@ only where vLLM types are involved.
 - **Norms, activations and RoPE** (`device_ops.py`): fp32 native RMSNorm,
   Gemma-4 norms, device-resident 2x2 RoPE with its split-free form, and
   Gemma-4's proportional RoPE.
+- **Tensor parallelism** (`worker.py`, `distributed.py`): per-worker rank and
+  device setup before native library loading, Spyre collectives for device
+  tensors and Gloo for host tensors. SGLang owns linear/expert sharding and
+  host-logit gathering; the adapter shards Gemma's separate Spyre LM head
+  and sums TP expert outputs while preserving its full CPU embedding.
 
 [`docs/spyre-inference-sync-2026-11-01.md`](docs/spyre-inference-sync-2026-11-01.md)
 lists every runtime change in the synced spyre-inference range as ported, not
@@ -90,10 +113,13 @@ applicable (vLLM scheduler or runner plumbing) or out of scope.
 
 ## Current scope
 
-- Decoder-only text generation, tensor parallel size 1, FP16.
+- Decoder-only text generation, FP16, one local TP world; DP1 and PP1.
+  Multi-node, expert parallelism and DP attention are not supported.
 - SGLang RadixCache with 128-token pages (spyre-inference's default block size).
-- `max_running_requests=1` is the validated configuration; the builder and the
-  batched decode kernel accept several sequences, as in spyre-inference.
+- The historical model parity baseline uses TP1 and
+  `max_running_requests=1`. The experimental TP4 path completed batch-four
+  Granite/Gemma benchmarks, with numerical CPU coverage for four-request
+  decode and mixed prefill and CPU-reference checks on the micro model.
 - No CUDA graphs; decoder blocks and attention kernels are compiled with
   `torch.compile(dynamic=False)`.
 
@@ -112,14 +138,22 @@ python -m sglang_oot_patches.apply
 ```
 
 `torch-spyre` must be built on a supported Spyre host with the IBM runtime and
-compiler available. Set the rank variables before importing torch-spyre:
+compiler available. Disable backend autoload in the Engine parent and enable
+Spyre model-body placement:
 
 ```bash
 export TORCH_DEVICE_BACKEND_AUTOLOAD=0
-export RANK=0 WORLD_SIZE=1 LOCAL_RANK=0 LOCAL_WORLD_SIZE=1
+export SGLANG_FORCE_DEVICE_SPYRE=1
+unset RANK WORLD_SIZE LOCAL_RANK LOCAL_WORLD_SIZE
 ```
 
+The scheduler bootstrap publishes each worker's actual rank, world size and
+local device before loading torch-spyre. Parent-side TP1 rank defaults must
+not be inherited by TP workers.
+
 ## Run
+
+For a single card:
 
 ```python
 import sglang as sgl
@@ -129,6 +163,8 @@ engine = sgl.Engine(
     device="cpu",
     attention_backend="spyre_paged",
     dtype="float16",
+    tp_size=1,
+    dp_size=1,
     page_size=128,
     context_length=2048,
     chunked_prefill_size=512,
@@ -144,8 +180,30 @@ print(result["text"])
 engine.shutdown()
 ```
 
-Set `SGLANG_FORCE_DEVICE_SPYRE=1` to place supported model-body operations on
-Spyre while SGLang keeps host-side scheduling tensors on CPU.
+`device="cpu"` keeps scheduling and sampling on the host;
+`SGLANG_FORCE_DEVICE_SPYRE=1` places supported model-body operations on Spyre.
+
+For the experimental TP4, batch-four comparison, first allocate four Spyre
+devices, then run:
+
+```bash
+export TORCH_DEVICE_BACKEND_AUTOLOAD=0 SGLANG_FORCE_DEVICE_SPYRE=1
+export SPYRE_DEVICES=0,1,2,3
+unset RANK WORLD_SIZE LOCAL_RANK LOCAL_WORLD_SIZE
+python experiments/tp4-b4-2026-11-05/sglang_batch_bench.py \
+  --model ibm-granite/granite-3.3-8b-instruct \
+  --tp-size 4 --batch-size 4 --context-length 2048 \
+  --max-new-tokens 16 --warmups 1 --iterations 3 \
+  --output granite-sglang-tp4-b4.json
+```
+
+This submits four copies of each of five pinned MMLU prompts, with greedy
+generation, a 512-token prefill budget and prefix caching disabled. The
+concurrency limit is four requests; the scheduler may form smaller batches
+during prefill or request completion. For Gemma-4 the harness selects the
+canonical text-only architecture, `Gemma4ForCausalLM`. The matching vLLM
+harness accepts `--text-only` for that same architecture override. Both legs
+must use the same model, prompts, device allocation and CPU thread budget.
 
 ## Verification and benchmark
 
@@ -154,7 +212,9 @@ CPU tests (no card; two upstream kernel test files are ported unchanged):
 ```bash
 pytest -q tests/test_tile_loop.py tests/test_batched_decode_head_major.py \
   tests/test_spyre_attention_builder.py tests/test_moe_routing.py \
-  tests/test_platform_ports.py tests/test_reuse_structure.py
+  tests/test_platform_ports.py tests/test_reuse_structure.py \
+  tests/test_spyre_attention_adapter.py tests/test_spyre_worker_bootstrap.py \
+  tests/test_spyre_distributed.py tests/test_tensor_parallel_models.py
 ```
 
 On a Spyre pod with spyre-inference installed, the A/B test compares the
@@ -164,8 +224,8 @@ vendored decode kernel with spyre-inference's own on identical inputs:
 python tests/spyre_kernel_ab.py
 ```
 
-The SGLang-vs-vLLM comparison runs each framework in its own environment and
-combines the records:
+The historical TP1, batch-one SGLang-vs-vLLM comparison runs each framework
+in its own environment and combines the records:
 
 ```bash
 python tests/mmlu_sglang_vs_vllm_bench.py sglang --model M --output sg.json

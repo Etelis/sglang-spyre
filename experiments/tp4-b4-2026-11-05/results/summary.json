@@ -1,0 +1,82 @@
+{
+  "configuration": {
+    "tensor_parallel_size": 4,
+    "data_parallel_size": 1,
+    "batch_size": 4,
+    "context_length": 2048,
+    "max_new_tokens": 16,
+    "warmups_per_case": 1,
+    "iterations_per_case": 3,
+    "cases": 5,
+    "batch_composition": "four copies of each MMLU case"
+  },
+  "sglang": {
+    "status": "not_run",
+    "reason": "Platform explicitly rejects tp_size > 1; TP4 implementation required"
+  },
+  "vllm": {
+    "granite": {
+      "mean_batch_ttft_seconds": 0.6793717382660058,
+      "mean_batch_latency_seconds": 1.5126309931996123,
+      "aggregate_decode_tokens_per_second": 72.27417494731019,
+      "cpu_fallback_warning_lines": 0,
+      "model": "ibm-granite/granite-3.3-8b-instruct",
+      "complete": true,
+      "answer_variation": [],
+      "software": {
+        "torch": "2.13.0+cpu",
+        "torch-spyre": "0.1.0.dev2107+head.g64870622",
+        "vllm": "0.32.0+empty",
+        "spyre-inference": "0.1.0.dev708+g0ccdbf6a",
+        "transformers": "5.16.1"
+      }
+    },
+    "gemma": {
+      "mean_batch_ttft_seconds": 1.4950871887340327,
+      "mean_batch_latency_seconds": 2.5787799451330407,
+      "aggregate_decode_tokens_per_second": 55.367861633092446,
+      "cpu_fallback_warning_lines": 0,
+      "model": "google/gemma-4-26B-A4B-it",
+      "complete": true,
+      "answer_variation": [
+        {
+          "subject": "abstract_algebra",
+          "predicted": [
+            [
+              "A",
+              "A",
+              "A",
+              null
+            ],
+            [
+              "A",
+              "A",
+              "A",
+              null
+            ],
+            [
+              "A",
+              "A",
+              "A",
+              null
+            ]
+          ]
+        }
+      ],
+      "software": {
+        "torch": "2.13.0+cpu",
+        "torch-spyre": "0.1.0.dev2107+head.g64870622",
+        "vllm": "0.32.0+empty",
+        "spyre-inference": "0.1.0.dev708+g0ccdbf6a",
+        "transformers": "5.16.1"
+      }
+    }
+  },
+  "timing_note": "All values are warmed. 1-token batch completion latency is a TTFT proxy; decode throughput is aggregate across four requests. Means are across five cases.",
+  "hardware_note": "New pod on p1-worker-49 (Xeon Platinum 8474C); original PR measured p1-worker-80 (Xeon 6736P). These are not a controlled TP1-vs-TP4 scaling comparison.",
+  "cleanup": {
+    "pod": "itay-spyre-tp4-b4-20261105",
+    "status": "deleted and absence verified",
+    "spyre_cards_released": 4
+  }
+}

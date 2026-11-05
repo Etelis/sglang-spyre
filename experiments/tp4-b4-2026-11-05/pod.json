@@ -1,0 +1,136 @@
+{
+  "apiVersion": "v1",
+  "kind": "Pod",
+  "metadata": {
+    "name": "itay-spyre-tp4-b4-20261105",
+    "namespace": "a5-deepview",
+    "labels": {
+      "deployer": "itay",
+      "purpose": "tp4-b4-benchmark"
+    },
+    "annotations": {
+      "purpose": "PR3 parity experiment TP4 DP1 batch4; owned by Itay"
+    }
+  },
+  "spec": {
+    "schedulerName": "spyre-scheduler",
+    "nodeSelector": {
+      "spyre.node-classification": "all"
+    },
+    "securityContext": {
+      "fsGroup": 1000810000,
+      "seLinuxOptions": {
+        "level": "s0:c28,c27"
+      },
+      "seccompProfile": {
+        "type": "RuntimeDefault"
+      }
+    },
+    "imagePullSecrets": [
+      {
+        "name": "default-dockercfg-jnt8r"
+      },
+      {
+        "name": "galbloch-spyre-icr"
+      },
+      {
+        "name": "gal-spyre-test"
+      },
+      {
+        "name": "flavia-iccr-secret"
+      },
+      {
+        "name": "mb-tir-mockingbird-pull"
+      }
+    ],
+    "serviceAccountName": "default",
+    "containers": [
+      {
+        "name": "app",
+        "image": "icr.io/ai_sw_accel/2.0/next/spyre-backend@sha256:e655db95b4037ecb3e587658a59ed2ce6a8b6b393da8bfe85eac21708353d657",
+        "command": [
+          "/bin/bash",
+          "-c",
+          "exec sleep infinity"
+        ],
+        "env": [
+          {
+            "name": "HF_HOME",
+            "value": "/home/galbloch/"
+          },
+          {
+            "name": "FLEX_COMPUTE",
+            "value": "SENTIENT"
+          },
+          {
+            "name": "FLEX_DEVICE",
+            "value": "PF"
+          },
+          {
+            "name": "TOKENIZERS_PARALLELISM",
+            "value": "false"
+          },
+          {
+            "name": "AIU_SETUP_MULTI_AIU",
+            "value": "1"
+          }
+        ],
+        "volumeMounts": [
+          {
+            "mountPath": "/dev/shm",
+            "name": "dev-shm"
+          },
+          {
+            "mountPath": "/home/galbloch",
+            "name": "squad-shared-pvc",
+            "subPath": "galbloch"
+          },
+          {
+            "mountPath": "/etc/passwd",
+            "name": "squad-shared-pvc",
+            "subPath": "galbloch/.passwd"
+          }
+        ],
+        "workingDir": "/home/galbloch",
+        "securityContext": {
+          "allowPrivilegeEscalation": false,
+          "capabilities": {
+            "drop": [
+              "ALL"
+            ]
+          },
+          "runAsNonRoot": true,
+          "runAsUser": 1000810000
+        },
+        "resources": {
+          "requests": {
+            "ibm.com/spyre_pf": "4",
+            "cpu": "32",
+            "memory": "128Gi"
+          },
+          "limits": {
+            "ibm.com/spyre_pf": "4",
+            "memory": "256Gi"
+          }
+        }
+      }
+    ],
+    "volumes": [
+      {
+        "emptyDir": {
+          "medium": "Memory",
+          "sizeLimit": "64Gi"
+        },
+        "name": "dev-shm"
+      },
+      {
+        "name": "squad-shared-pvc",
+        "persistentVolumeClaim": {
+          "claimName": "a5-deepview"
+        }
+      }
+    ],
+    "restartPolicy": "Never",
+    "terminationGracePeriodSeconds": 30
+  }
+}

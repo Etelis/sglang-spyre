@@ -1,0 +1,111 @@
+{
+  "cpu_tests": {
+    "passed": 67,
+    "duration_seconds": 36.45,
+    "pytest_plugin_autoload": false,
+    "files": [
+      "test_tensor_parallel_models.py",
+      "test_spyre_worker_bootstrap.py",
+      "test_spyre_distributed.py",
+      "test_platform_ports.py",
+      "test_reuse_structure.py",
+      "test_spyre_attention_builder.py",
+      "test_spyre_attention_adapter.py"
+    ]
+  },
+  "compatibility_patches": {
+    "count": 6,
+    "fresh_sglang_wheel": "0.5.21",
+    "all_anchors_unique": true,
+    "installed_source_exactly_matches_wheel_plus_patches": true,
+    "installed_source_hashes": "sglang-installed-patch-sha256.json"
+  },
+  "micro_canaries": {
+    "micro-sglang-tp4-b4": {
+      "complete": true,
+      "responses_matching_fp32_cpu_reference": 20,
+      "fallback_warnings": 0,
+      "deprecated_getter_graph_breaks": 0
+    },
+    "micro-sglang-tp1-b4": {
+      "complete": true,
+      "responses_matching_fp32_cpu_reference": 20,
+      "fallback_warnings": 0,
+      "deprecated_getter_graph_breaks": 0
+    }
+  },
+  "tp4_logged_card_assignments": [
+    {
+      "rank": 0,
+      "local_rank": 0,
+      "pcie_address": "0000:41:00.0"
+    },
+    {
+      "rank": 1,
+      "local_rank": 1,
+      "pcie_address": "0000:42:00.0"
+    },
+    {
+      "rank": 2,
+      "local_rank": 2,
+      "pcie_address": "0000:aa:00.0"
+    },
+    {
+      "rank": 3,
+      "local_rank": 3,
+      "pcie_address": "0000:ab:00.0"
+    }
+  ],
+  "micro_note": "Two generated tokens, five cases, four copies per case, one measured batch. Decoded outputs match an independent FP32 CPU reference; raw SGLang token IDs were not saved.",
+  "cpu_tests_recovered_environment": {
+    "passed": 67,
+    "duration_seconds": 35.97,
+    "pytest_plugin_autoload": false,
+    "files": [
+      "test_tensor_parallel_models.py",
+      "test_spyre_worker_bootstrap.py",
+      "test_spyre_distributed.py",
+      "test_platform_ports.py",
+      "test_reuse_structure.py",
+      "test_spyre_attention_builder.py",
+      "test_spyre_attention_adapter.py"
+    ]
+  },
+  "full_model_benchmarks": {
+    "granite-sglang-tp4-b4": {
+      "complete": true,
+      "measured_cases": 5,
+      "measured_responses": 60,
+      "torch_spyre_fallback_warning_lines": 0,
+      "scheduler_exceptions": 0
+    },
+    "gemma-sglang-tp4-b4": {
+      "complete": true,
+      "measured_cases": 5,
+      "measured_responses": 60,
+      "torch_spyre_fallback_warning_lines": 0,
+      "scheduler_exceptions": 0
+    },
+    "granite-vllm-tp4-b4-matched": {
+      "complete": true,
+      "measured_cases": 5,
+      "measured_responses": 60,
+      "torch_spyre_fallback_warning_lines": 0,
+      "scheduler_exceptions": 0
+    },
+    "gemma-vllm-tp4-b4-matched": {
+      "complete": true,
+      "measured_cases": 5,
+      "measured_responses": 60,
+      "torch_spyre_fallback_warning_lines": 0,
+      "scheduler_exceptions": 0
+    }
+  },
+  "cleanup": {
+    "pod": "itay-sglang-tp4-dev-20261105",
+    "namespace": "a5-deepview",
+    "status": "deleted; absence verified",
+    "requested_spyre_cards": 4,
+    "verified_at": "2026-11-05T10:41:30.312979+00:00"
+  }
+}

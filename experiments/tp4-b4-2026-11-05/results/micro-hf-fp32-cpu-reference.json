@@ -1,0 +1,315 @@
+{
+  "model": "ibm-ai-platform/micro-g3.3-8b-instruct-1b",
+  "framework": "huggingface-transformers",
+  "device": "cpu",
+  "dtype": "float32",
+  "attention_implementation": "eager",
+  "torch": "2.13.0+cpu",
+  "max_new_tokens": 2,
+  "min_new_tokens": 2,
+  "eos_token_id": null,
+  "do_sample": false,
+  "tensor_parallel_size": 1,
+  "comparison_source": "micro-sglang-tp4-b4.json",
+  "comparison_note": "SGLang raw token ids were not saved; compare exact decoded text and its retokenized ids.",
+  "examples": [
+    {
+      "subject": "abstract_algebra",
+      "test_index": 0,
+      "answer": "B",
+      "prompt_sha256": "6cce9ddf84adc6e40be6850fb045754910bb7a2aa6ca2aaaf2524d037f9ba328",
+      "input_tokens": 71,
+      "generated_token_ids": [
+        399,
+        203
+      ],
+      "generated_text": " A\n",
+      "steps": [
+        {
+          "top3": [
+            {
+              "token_id": 399,
+              "text": " A",
+              "logit": 10.334014892578125
+            },
+            {
+              "token_id": 551,
+              "text": " B",
+              "logit": 10.12004280090332
+            },
+            {
+              "token_id": 390,
+              "text": " C",
+              "logit": 10.031537055969238
+            }
+          ],
+          "top1_margin": 0.2139720916748047
+        },
+        {
+          "top3": [
+            {
+              "token_id": 203,
+              "text": "\n",
+              "logit": 11.395642280578613
+            },
+            {
+              "token_id": 32,
+              "text": ".",
+              "logit": 9.130951881408691
+            },
+            {
+              "token_id": 30,
+              "text": ",",
+              "logit": 8.598066329956055
+            }
+          ],
+          "top1_margin": 2.264690399169922
+        }
+      ],
+      "sglang_unique_texts": [
+        " A\n"
+      ],
+      "all_sglang_texts_match": true,
+      "all_retokenized_sglang_ids_match": true
+    },
+    {
+      "subject": "anatomy",
+      "test_index": 0,
+      "answer": "A",
+      "prompt_sha256": "68879619603ddcef95a017845a2654ea4148b95d362340aa94dd649a92f6f7db",
+      "input_tokens": 125,
+      "generated_token_ids": [
+        399,
+        203
+      ],
+      "generated_text": " A\n",
+      "steps": [
+        {
+          "top3": [
+            {
+              "token_id": 399,
+              "text": " A",
+              "logit": 11.302978515625
+            },
+            {
+              "token_id": 475,
+              "text": " D",
+              "logit": 11.268582344055176
+            },
+            {
+              "token_id": 390,
+              "text": " C",
+              "logit": 10.958333969116211
+            }
+          ],
+          "top1_margin": 0.03439617156982422
+        },
+        {
+          "top3": [
+            {
+              "token_id": 203,
+              "text": "\n",
+              "logit": 11.38032054901123
+            },
+            {
+              "token_id": 30,
+              "text": ",",
+              "logit": 9.862698554992676
+            },
+            {
+              "token_id": 32,
+              "text": ".",
+              "logit": 8.605849266052246
+            }
+          ],
+          "top1_margin": 1.5176219940185547
+        }
+      ],
+      "sglang_unique_texts": [
+        " A\n"
+      ],
+      "all_sglang_texts_match": true,
+      "all_retokenized_sglang_ids_match": true
+    },
+    {
+      "subject": "high_school_physics",
+      "test_index": 0,
+      "answer": "B",
+      "prompt_sha256": "936218601d433a4407c417d72a0c1a7a73c4062492fb43b82f842cfec6c947ab",
+      "input_tokens": 100,
+      "generated_token_ids": [
+        551,
+        203
+      ],
+      "generated_text": " B\n",
+      "steps": [
+        {
+          "top3": [
+            {
+              "token_id": 551,
+              "text": " B",
+              "logit": 11.126437187194824
+            },
+            {
+              "token_id": 390,
+              "text": " C",
+              "logit": 10.873371124267578
+            },
+            {
+              "token_id": 399,
+              "text": " A",
+              "logit": 10.856487274169922
+            }
+          ],
+          "top1_margin": 0.2530660629272461
+        },
+        {
+          "top3": [
+            {
+              "token_id": 203,
+              "text": "\n",
+              "logit": 12.630658149719238
+            },
+            {
+              "token_id": 32,
+              "text": ".",
+              "logit": 10.46338939666748
+            },
+            {
+              "token_id": 0,
+              "text": "<|end_of_text|>",
+              "logit": 9.519608497619629
+            }
+          ],
+          "top1_margin": 2.167268753051758
+        }
+      ],
+      "sglang_unique_texts": [
+        " B\n"
+      ],
+      "all_sglang_texts_match": true,
+      "all_retokenized_sglang_ids_match": true
+    },
+    {
+      "subject": "professional_medicine",
+      "test_index": 0,
+      "answer": "C",
+      "prompt_sha256": "8130db82918bbb367e0351fffaedf88561ca017e074674a73c7795b506a080ba",
+      "input_tokens": 320,
+      "generated_token_ids": [
+        399,
+        203
+      ],
+      "generated_text": " A\n",
+      "steps": [
+        {
+          "top3": [
+            {
+              "token_id": 399,
+              "text": " A",
+              "logit": 12.241873741149902
+            },
+            {
+              "token_id": 390,
+              "text": " C",
+              "logit": 12.203690528869629
+            },
+            {
+              "token_id": 551,
+              "text": " B",
+              "logit": 12.184425354003906
+            }
+          ],
+          "top1_margin": 0.03818321228027344
+        },
+        {
+          "top3": [
+            {
+              "token_id": 203,
+              "text": "\n",
+              "logit": 11.08359146118164
+            },
+            {
+              "token_id": 32,
+              "text": ".",
+              "logit": 9.500811576843262
+            },
+            {
+              "token_id": 225,
+              "text": " ",
+              "logit": 8.419670104980469
+            }
+          ],
+          "top1_margin": 1.582779884338379
+        }
+      ],
+      "sglang_unique_texts": [
+        " A\n"
+      ],
+      "all_sglang_texts_match": true,
+      "all_retokenized_sglang_ids_match": true
+    },
+    {
+      "subject": "world_religions",
+      "test_index": 0,
+      "answer": "D",
+      "prompt_sha256": "0b130e5bcc3b5e08a8989d887901d5f7d527e610280fe50d9c856e4eb2d6d889",
+      "input_tokens": 55,
+      "generated_token_ids": [
+        399,
+        30
+      ],
+      "generated_text": " A,",
+      "steps": [
+        {
+          "top3": [
+            {
+              "token_id": 399,
+              "text": " A",
+              "logit": 11.212491989135742
+            },
+            {
+              "token_id": 551,
+              "text": " B",
+              "logit": 10.85560417175293
+            },
+            {
+              "token_id": 475,
+              "text": " D",
+              "logit": 10.558035850524902
+            }
+          ],
+          "top1_margin": 0.3568878173828125
+        },
+        {
+          "top3": [
+            {
+              "token_id": 30,
+              "text": ",",
+              "logit": 11.504120826721191
+            },
+            {
+              "token_id": 203,
+              "text": "\n",
+              "logit": 11.014432907104492
+            },
+            {
+              "token_id": 32,
+              "text": ".",
+              "logit": 10.469902992248535
+            }
+          ],
+          "top1_margin": 0.4896879196166992
+        }
+      ],
+      "sglang_unique_texts": [
+        " A,"
+      ],
+      "all_sglang_texts_match": true,
+      "all_retokenized_sglang_ids_match": true
+    }
+  ],
+  "complete": true,
+  "all_texts_match": true,
+  "all_retokenized_ids_match": true
+}

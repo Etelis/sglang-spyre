@@ -1,0 +1,345 @@
+{
+  "model": "ibm-granite/granite-3.3-8b-instruct",
+  "framework": "sglang",
+  "tensor_parallel_size": 4,
+  "data_parallel_size": 1,
+  "batch_size": 4,
+  "max_new_tokens": 16,
+  "context_length": 2048,
+  "dataset": "cais/mmlu",
+  "dataset_revision": "c30699e8356da336a370243923dbaf21066bb9fe",
+  "max_num_batched_tokens": 512,
+  "prefix_caching": false,
+  "batch_composition": "4 copies of each case",
+  "warmups": 1,
+  "iterations": 3,
+  "model_override": {},
+  "timing_method": "batch completion time; one-token request is a TTFT proxy",
+  "engine_args": {
+    "model_path": "ibm-granite/granite-3.3-8b-instruct",
+    "device": "cpu",
+    "attention_backend": "spyre_paged",
+    "dtype": "float16",
+    "tp_size": 4,
+    "dp_size": 1,
+    "page_size": 128,
+    "context_length": 2048,
+    "max_total_tokens": 8192,
+    "max_running_requests": 4,
+    "chunked_prefill_size": 512,
+    "disable_radix_cache": true,
+    "disable_cuda_graph": true,
+    "random_seed": 0,
+    "log_level": "warning",
+    "json_model_override_args": "{}"
+  },
+  "software": {
+    "torch": "2.13.0+cpu",
+    "torch-spyre": "0.1.0.dev2107+head.g64870622",
+    "sglang": "0.5.21",
+    "transformers": "5.16.1"
+  },
+  "examples": [
+    {
+      "subject": "abstract_algebra",
+      "test_index": 0,
+      "answer": "B",
+      "prompt_sha256": "6cce9ddf84adc6e40be6850fb045754910bb7a2aa6ca2aaaf2524d037f9ba328",
+      "input_tokens": 71,
+      "batch_ttft_seconds": [
+        0.22187185500661144,
+        0.2206372040018323,
+        0.2191904240025906
+      ],
+      "batch_latency_seconds": [
+        1.19067524500133,
+        1.229945355997188,
+        1.1624429689982207
+      ],
+      "mean_batch_ttft_seconds": 0.22056649433701145,
+      "mean_batch_latency_seconds": 1.1943545233322463,
+      "aggregate_decode_tokens_per_second": 61.615051955309674,
+      "generated_texts": [
+        [
+          " D\n\nWhich of the following is the correct factorization of the expression ",
+          " D\n\nWhich of the following is the correct factorization of the expression ",
+          " D\n\nWhich of the following is the correct factorization of the expression ",
+          " D\n\nWhich of the following is the correct factorization of the expression "
+        ],
+        [
+          " D\n\nWhich of the following is the correct factorization of the expression ",
+          " D\n\nWhich of the following is the correct factorization of the expression ",
+          " D\n\nWhich of the following is the correct factorization of the expression ",
+          " D\n\nWhich of the following is the correct factorization of the expression "
+        ],
+        [
+          " D\n\nWhich of the following is the correct factorization of the expression ",
+          " D\n\nWhich of the following is the correct factorization of the expression ",
+          " D\n\nWhich of the following is the correct factorization of the expression ",
+          " D\n\nWhich of the following is the correct factorization of the expression "
+        ]
+      ],
+      "predicted": [
+        [
+          "D",
+          "D",
+          "D",
+          "D"
+        ],
+        [
+          "D",
+          "D",
+          "D",
+          "D"
+        ],
+        [
+          "D",
+          "D",
+          "D",
+          "D"
+        ]
+      ]
+    },
+    {
+      "subject": "anatomy",
+      "test_index": 0,
+      "answer": "A",
+      "prompt_sha256": "68879619603ddcef95a017845a2654ea4148b95d362340aa94dd649a92f6f7db",
+      "input_tokens": 125,
+      "batch_ttft_seconds": [
+        0.22006080700521125,
+        0.22410578199924203,
+        0.22039603300072486
+      ],
+      "batch_latency_seconds": [
+        1.1507543050029199,
+        1.1731835840037093,
+        1.1810847379965708
+      ],
+      "mean_batch_ttft_seconds": 0.22152087400172604,
+      "mean_batch_latency_seconds": 1.1683408756677334,
+      "aggregate_decode_tokens_per_second": 63.37001742086678,
+      "generated_texts": [
+        [
+          " A\n\nExplanation: The facial nerve (cranial nerve V",
+          " A\n\nExplanation: The facial nerve (cranial nerve V",
+          " A\n\nExplanation: The facial nerve (cranial nerve V",
+          " A\n\nExplanation: The facial nerve (cranial nerve V"
+        ],
+        [
+          " A\n\nExplanation: The facial nerve (cranial nerve V",
+          " A\n\nExplanation: The facial nerve (cranial nerve V",
+          " A\n\nExplanation: The facial nerve (cranial nerve V",
+          " A\n\nExplanation: The facial nerve (cranial nerve V"
+        ],
+        [
+          " A\n\nExplanation: The facial nerve (cranial nerve V",
+          " A\n\nExplanation: The facial nerve (cranial nerve V",
+          " A\n\nExplanation: The facial nerve (cranial nerve V",
+          " A\n\nExplanation: The facial nerve (cranial nerve V"
+        ]
+      ],
+      "predicted": [
+        [
+          "A",
+          "A",
+          "A",
+          "A"
+        ],
+        [
+          "A",
+          "A",
+          "A",
+          "A"
+        ],
+        [
+          "A",
+          "A",
+          "A",
+          "A"
+        ]
+      ]
+    },
+    {
+      "subject": "high_school_physics",
+      "test_index": 0,
+      "answer": "B",
+      "prompt_sha256": "936218601d433a4407c417d72a0c1a7a73c4062492fb43b82f842cfec6c947ab",
+      "input_tokens": 100,
+      "batch_ttft_seconds": [
+        0.2208557150006527,
+        0.22444578200520482,
+        0.22363692900398746
+      ],
+      "batch_latency_seconds": [
+        1.2093386180058587,
+        1.1542547879944323,
+        1.1692043709990685
+      ],
+      "mean_batch_ttft_seconds": 0.222979475336615,
+      "mean_batch_latency_seconds": 1.1775992589997866,
+      "aggregate_decode_tokens_per_second": 62.852248640564966,
+      "generated_texts": [
+        [
+          " C\n\nThe charge (Q) on a capacitor can be calculated using",
+          " C\n\nThe charge (Q) on a capacitor can be calculated using",
+          " C\n\nThe charge (Q) on a capacitor can be calculated using",
+          " C\n\nThe charge (Q) on a capacitor can be calculated using"
+        ],
+        [
+          " C\n\nThe charge (Q) on a capacitor can be calculated using",
+          " C\n\nThe charge (Q) on a capacitor can be calculated using",
+          " C\n\nThe charge (Q) on a capacitor can be calculated using",
+          " C\n\nThe charge (Q) on a capacitor can be calculated using"
+        ],
+        [
+          " C\n\nThe charge (Q) on a capacitor can be calculated using",
+          " C\n\nThe charge (Q) on a capacitor can be calculated using",
+          " C\n\nThe charge (Q) on a capacitor can be calculated using",
+          " C\n\nThe charge (Q) on a capacitor can be calculated using"
+        ]
+      ],
+      "predicted": [
+        [
+          "C",
+          "C",
+          "C",
+          "C"
+        ],
+        [
+          "C",
+          "C",
+          "C",
+          "C"
+        ],
+        [
+          "C",
+          "C",
+          "C",
+          "C"
+        ]
+      ]
+    },
+    {
+      "subject": "professional_medicine",
+      "test_index": 0,
+      "answer": "C",
+      "prompt_sha256": "8130db82918bbb367e0351fffaedf88561ca017e074674a73c7795b506a080ba",
+      "input_tokens": 320,
+      "batch_ttft_seconds": [
+        0.6429407670002547,
+        0.6412041139992652,
+        0.6411222879978595
+      ],
+      "batch_latency_seconds": [
+        2.7104135240006144,
+        2.646623136002745,
+        2.707466372005001
+      ],
+      "mean_batch_ttft_seconds": 0.6417557229991265,
+      "mean_batch_latency_seconds": 2.68816767733612,
+      "aggregate_decode_tokens_per_second": 29.31960980429236,
+      "generated_texts": [
+        [
+          " C\n\nExplanation: The patient's symptoms of persistent tingling and",
+          " C\n\nExplanation: The patient's symptoms of persistent tingling and",
+          " C\n\nExplanation: The patient's symptoms of persistent tingling and",
+          " C\n\nExplanation: The patient's symptoms of persistent tingling and"
+        ],
+        [
+          " C\n\nExplanation: The patient's symptoms of persistent tingling and",
+          " C\n\nExplanation: The patient's symptoms of persistent tingling and",
+          " C\n\nExplanation: The patient's symptoms of persistent tingling and",
+          " C\n\nExplanation: The patient's symptoms of persistent tingling and"
+        ],
+        [
+          " C\n\nExplanation: The patient's symptoms of persistent tingling and",
+          " C\n\nExplanation: The patient's symptoms of persistent tingling and",
+          " C\n\nExplanation: The patient's symptoms of persistent tingling and",
+          " C\n\nExplanation: The patient's symptoms of persistent tingling and"
+        ]
+      ],
+      "predicted": [
+        [
+          "C",
+          "C",
+          "C",
+          "C"
+        ],
+        [
+          "C",
+          "C",
+          "C",
+          "C"
+        ],
+        [
+          "C",
+          "C",
+          "C",
+          "C"
+        ]
+      ]
+    },
+    {
+      "subject": "world_religions",
+      "test_index": 0,
+      "answer": "D",
+      "prompt_sha256": "0b130e5bcc3b5e08a8989d887901d5f7d527e610280fe50d9c856e4eb2d6d889",
+      "input_tokens": 55,
+      "batch_ttft_seconds": [
+        0.21920512300130213,
+        0.21933178100152873,
+        0.2184614590005367
+      ],
+      "batch_latency_seconds": [
+        1.135081408006954,
+        1.2168186219932977,
+        1.1404940749998786
+      ],
+      "mean_batch_ttft_seconds": 0.21899945433445586,
+      "mean_batch_latency_seconds": 1.1641313683333767,
+      "aggregate_decode_tokens_per_second": 63.48320177459219,
+      "generated_texts": [
+        [
+          " D. Idols\n\n---\n\nWhich of the following is NOT a",
+          " D. Idols\n\n---\n\nWhich of the following is NOT a",
+          " D. Idols\n\n---\n\nWhich of the following is NOT a",
+          " D. Idols\n\n---\n\nWhich of the following is NOT a"
+        ],
+        [
+          " D. Idols\n\n---\n\nWhich of the following is NOT a",
+          " D. Idols\n\n---\n\nWhich of the following is NOT a",
+          " D. Idols\n\n---\n\nWhich of the following is NOT a",
+          " D. Idols\n\n---\n\nWhich of the following is NOT a"
+        ],
+        [
+          " D. Idols\n\n---\n\nWhich of the following is NOT a",
+          " D. Idols\n\n---\n\nWhich of the following is NOT a",
+          " D. Idols\n\n---\n\nWhich of the following is NOT a",
+          " D. Idols\n\n---\n\nWhich of the following is NOT a"
+        ]
+      ],
+      "predicted": [
+        [
+          "D",
+          "D",
+          "D",
+          "D"
+        ],
+        [
+          "D",
+          "D",
+          "D",
+          "D"
+        ],
+        [
+          "D",
+          "D",
+          "D",
+          "D"
+        ]
+      ]
+    }
+  ],
+  "complete": true
+}

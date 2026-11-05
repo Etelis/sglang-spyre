@@ -1,0 +1,326 @@
+{
+  "model": "google/gemma-4-26B-A4B-it",
+  "framework": "vllm",
+  "tensor_parallel_size": 4,
+  "data_parallel_size": 1,
+  "batch_size": 4,
+  "max_new_tokens": 16,
+  "context_length": 2048,
+  "dataset": "cais/mmlu",
+  "dataset_revision": "c30699e8356da336a370243923dbaf21066bb9fe",
+  "max_num_batched_tokens": 512,
+  "prefix_caching": false,
+  "batch_composition": "four copies of each case",
+  "warmups": 1,
+  "iterations": 3,
+  "software": {
+    "torch": "2.13.0+cpu",
+    "torch-spyre": "0.1.0.dev2107+head.g64870622",
+    "vllm": "0.32.0+empty",
+    "spyre-inference": "0.1.0.dev708+g0ccdbf6a",
+    "transformers": "5.16.1"
+  },
+  "examples": [
+    {
+      "subject": "abstract_algebra",
+      "test_index": 0,
+      "answer": "B",
+      "prompt_sha256": "6cce9ddf84adc6e40be6850fb045754910bb7a2aa6ca2aaaf2524d037f9ba328",
+      "input_tokens": 70,
+      "batch_ttft_seconds": [
+        1.4917474320027395,
+        1.4934827460019733,
+        1.4946441850042902
+      ],
+      "batch_latency_seconds": [
+        2.566571510003996,
+        2.5776243610016536,
+        2.580365037996671
+      ],
+      "mean_batch_ttft_seconds": 1.4932914543363343,
+      "mean_batch_latency_seconds": 2.574853636334107,
+      "aggregate_decode_tokens_per_second": 55.47531246809402,
+      "generated_texts": [
+        [
+          " 0\nWait, I'm thinking about it.\nA. ",
+          " 0\nWait, I'm thinking about it.\nA. ",
+          " 0\nWait, I'm thinking about it.\nA. ",
+          " 0\nWait, I'm thinking about the degree of the extension."
+        ],
+        [
+          " 0\nWait, I'm thinking about it.\nA. ",
+          " 0\nWait, I'm thinking about it.\nA. ",
+          " 0\nWait, I'm thinking about it.\nA. ",
+          " 0\nWait, I'm thinking about the degree of the extension."
+        ],
+        [
+          " 0\nWait, I'm thinking about it.\nA. ",
+          " 0\nWait, I'm thinking about it.\nA. ",
+          " 0\nWait, I'm thinking about it.\nA. ",
+          " 0\nWait, I'm thinking about the degree of the extension."
+        ]
+      ],
+      "predicted": [
+        [
+          "A",
+          "A",
+          "A",
+          null
+        ],
+        [
+          "A",
+          "A",
+          "A",
+          null
+        ],
+        [
+          "A",
+          "A",
+          "A",
+          null
+        ]
+      ]
+    },
+    {
+      "subject": "anatomy",
+      "test_index": 0,
+      "answer": "A",
+      "prompt_sha256": "68879619603ddcef95a017845a2654ea4148b95d362340aa94dd649a92f6f7db",
+      "input_tokens": 104,
+      "batch_ttft_seconds": [
+        1.489878462998604,
+        1.4914206879984704,
+        1.4916781930005527
+      ],
+      "batch_latency_seconds": [
+        2.569373350001115,
+        2.5801939469965873,
+        2.5760834730026545
+      ],
+      "mean_batch_ttft_seconds": 1.490992447999209,
+      "mean_batch_latency_seconds": 2.575216923333452,
+      "aggregate_decode_tokens_per_second": 55.33909385462202,
+      "generated_texts": [
+        [
+          "\n\nA. paralysis of the facial muscles.\nB. paralysis of the facial",
+          "\n\nA. paralysis of the facial muscles.\nB. paralysis of the facial",
+          "\n\nA. paralysis of the facial muscles.\nB. paralysis of the facial",
+          "\n\nA. paralysis of the facial muscles.\nB. paralysis of the facial"
+        ],
+        [
+          "\n\nA. paralysis of the facial muscles.\nB. paralysis of the facial",
+          "\n\nA. paralysis of the facial muscles.\nB. paralysis of the facial",
+          "\n\nA. paralysis of the facial muscles.\nB. paralysis of the facial",
+          "\n\nA. paralysis of the facial muscles.\nB. paralysis of the facial"
+        ],
+        [
+          "\n\nA. paralysis of the facial muscles.\nB. paralysis of the facial",
+          "\n\nA. paralysis of the facial muscles.\nB. paralysis of the facial",
+          "\n\nA. paralysis of the facial muscles.\nB. paralysis of the facial",
+          "\n\nA. paralysis of the facial muscles.\nB. paralysis of the facial"
+        ]
+      ],
+      "predicted": [
+        [
+          "A",
+          "A",
+          "A",
+          "A"
+        ],
+        [
+          "A",
+          "A",
+          "A",
+          "A"
+        ],
+        [
+          "A",
+          "A",
+          "A",
+          "A"
+        ]
+      ]
+    },
+    {
+      "subject": "high_school_physics",
+      "test_index": 0,
+      "answer": "B",
+      "prompt_sha256": "936218601d433a4407c417d72a0c1a7a73c4062492fb43b82f842cfec6c947ab",
+      "input_tokens": 94,
+      "batch_ttft_seconds": [
+        1.4902039680018788,
+        1.4892286089962,
+        1.490951399995538
+      ],
+      "batch_latency_seconds": [
+        2.567510332002712,
+        2.570253354999295,
+        2.572350827998889
+      ],
+      "mean_batch_ttft_seconds": 1.4901279923312056,
+      "mean_batch_latency_seconds": 2.5700381716669654,
+      "aggregate_decode_tokens_per_second": 55.56017634439311,
+      "generated_texts": [
+        [
+          " A. 0.005 C\nReply: A. 0",
+          " A. 0.005 C\nWait, I'm not",
+          " A. 0.005 C\nReply: A. 0",
+          " A. 0.005 C\nWait, I'm sorry"
+        ],
+        [
+          " A. 0.005 C\nReply: A. 0",
+          " A. 0.005 C\nWait, I'm not",
+          " A. 0.005 C\nReply: A. 0",
+          " A. 0.005 C\nWait, I'm sorry"
+        ],
+        [
+          " A. 0.005 C\nReply: A. 0",
+          " A. 0.005 C\nWait, I'm not",
+          " A. 0.005 C\nReply: A. 0",
+          " A. 0.005 C\nWait, I'm sorry"
+        ]
+      ],
+      "predicted": [
+        [
+          "A",
+          "A",
+          "A",
+          "A"
+        ],
+        [
+          "A",
+          "A",
+          "A",
+          "A"
+        ],
+        [
+          "A",
+          "A",
+          "A",
+          "A"
+        ]
+      ]
+    },
+    {
+      "subject": "professional_medicine",
+      "test_index": 0,
+      "answer": "C",
+      "prompt_sha256": "8130db82918bbb367e0351fffaedf88561ca017e074674a73c7795b506a080ba",
+      "input_tokens": 259,
+      "batch_ttft_seconds": [
+        1.5111239580000984,
+        1.5118034050028655,
+        1.5147229560025153
+      ],
+      "batch_latency_seconds": [
+        2.6090615349967266,
+        2.6084464579980704,
+        2.604276633996051
+      ],
+      "mean_batch_ttft_seconds": 1.5125501063351596,
+      "mean_batch_latency_seconds": 2.6072615423302827,
+      "aggregate_decode_tokens_per_second": 54.80896428697516,
+      "generated_texts": [
+        [
+          "\n\nA 67-year-old woman comes to the|\nA",
+          "\n\nA 67-year-old woman comes to the|\nA",
+          "\n\nA 67-year-old woman comes to the|\nA",
+          "\n\nA 67-year-old woman comes to the| physician for"
+        ],
+        [
+          "\n\nA 67-year-old woman comes to the|\nA",
+          "\n\nA 67-year-old woman comes to the|\nA",
+          "\n\nA 67-year-old woman comes to the|\nA",
+          "\n\nA 67-year-old woman comes to the| physician for"
+        ],
+        [
+          "\n\nA 67-year-old woman comes to the|\nA",
+          "\n\nA 67-year-old woman comes to the|\nA",
+          "\n\nA 67-year-old woman comes to the|\nA",
+          "\n\nA 67-year-old woman comes to the| physician for"
+        ]
+      ],
+      "predicted": [
+        [
+          "A",
+          "A",
+          "A",
+          "A"
+        ],
+        [
+          "A",
+          "A",
+          "A",
+          "A"
+        ],
+        [
+          "A",
+          "A",
+          "A",
+          "A"
+        ]
+      ]
+    },
+    {
+      "subject": "world_religions",
+      "test_index": 0,
+      "answer": "D",
+      "prompt_sha256": "0b130e5bcc3b5e08a8989d887901d5f7d527e610280fe50d9c856e4eb2d6d889",
+      "input_tokens": 53,
+      "batch_ttft_seconds": [
+        1.487349789000291,
+        1.4892198480010848,
+        1.4888521910033887
+      ],
+      "batch_latency_seconds": [
+        2.564690008999605,
+        2.5688187100022333,
+        2.5660796369993477
+      ],
+      "mean_batch_ttft_seconds": 1.4884739426682547,
+      "mean_batch_latency_seconds": 2.5665294520003954,
+      "aggregate_decode_tokens_per_second": 55.6557612113779,
+      "generated_texts": [
+        [
+          " A\n```\n\n Wait, I'm not sure if the answer is A",
+          " A\n```\n\n What can murtis be translated as?\nA.",
+          " A\n```\n\nWait, what can murtis be translated as?\n",
+          " A\n```\n\nWait, what can murtis be translated as?\n"
+        ],
+        [
+          " A\n```\n\n Wait, I'm not sure if the answer is A",
+          " A\n```\n\n What can murtis be translated as?\nA.",
+          " A\n```\n\nWait, what can murtis be translated as?\n",
+          " A\n```\n\nWait, what can murtis be translated as?\n"
+        ],
+        [
+          " A\n```\n\n Wait, I'm not sure if the answer is A",
+          " A\n```\n\n What can murtis be translated as?\nA.",
+          " A\n```\n\nWait, what can murtis be translated as?\n",
+          " A\n```\n\nWait, what can murtis be translated as?\n"
+        ]
+      ],
+      "predicted": [
+        [
+          "A",
+          "A",
+          "A",
+          "A"
+        ],
+        [
+          "A",
+          "A",
+          "A",
+          "A"
+        ],
+        [
+          "A",
+          "A",
+          "A",
+          "A"
+        ]
+      ]
+    }
+  ],
+  "complete": true
+}

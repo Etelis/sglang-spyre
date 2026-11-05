@@ -1,0 +1,32 @@
+[
+  {
+    "path": "model_executor/model_runner.py",
+    "original_anchor_count": 1,
+    "idempotent_new_anchor": true
+  },
+  {
+    "path": "utils/common.py",
+    "original_anchor_count": 1,
+    "idempotent_new_anchor": true
+  },
+  {
+    "path": "distributed/bootstrap.py",
+    "original_anchor_count": 1,
+    "idempotent_new_anchor": true
+  },
+  {
+    "path": "utils/common.py",
+    "original_anchor_count": 1,
+    "idempotent_new_anchor": true
+  },
+  {
+    "path": "configs/utils.py",
+    "original_anchor_count": 1,
+    "idempotent_new_anchor": true
+  },
+  {
+    "path": "arg_groups/model_hook.py",
+    "original_anchor_count": 1,
+    "idempotent_new_anchor": true
+  }
+]

@@ -1,5 +1,67 @@
 # Spyre parity benchmark
 
+## TP4 / DP1, four-request batches (2026-11-05)
+
+The [matched summary](experiments/tp4-b4-2026-11-05/results/matched-summary.json),
+[environment](experiments/tp4-b4-2026-11-05/results/validation-environment.json),
+[validation checks](experiments/tp4-b4-2026-11-05/results/validation-checks.json)
+and [harness instructions](experiments/tp4-b4-2026-11-05/README.md) preserve this run.
+The backend implementation is commit `b4c30955`.
+
+Both frameworks ran sequentially on the same four-card allocation in one pod
+on worker49 (Xeon Platinum 8474C), using the pinned stack below, FP16, TP4,
+DP1, context 2048, a 512-token prefill budget and disabled prefix caching.
+Each worker used OMP/MKL thread limits of 32; CPU affinity was not pinned per
+worker. Gemma explicitly used the `Gemma4ForCausalLM` text backbone in both
+frameworks.
+
+Each batch submits four copies of one of the same five pinned MMLU prompts.
+The concurrency cap is four; chunked prefill can form smaller device batches.
+Per case and output length, one warmup precedes three measurements. The table
+averages the five per-case means. A one-token batch completion time serves as
+the TTFT proxy; latency measures a batch generating 16 tokens per request.
+The aggregate decode estimate is `4 * 15 / (mean_latency_16 - mean_latency_1)`
+per case, then averaged across cases. Scheduler behavior affects this estimate.
+
+| Framework | Model | TP / DP | Batch size | Mean batch TTFT proxy | Mean batch latency (16 tokens/request) | Aggregate decode tok/s (estimate) |
+|---|---|---|---:|---:|---:|---:|
+| SGLang / Spyre | Granite 3.3 8B | 4 / 1 | 4 | 0.305 s | 1.479 s | 56.13 |
+| vLLM / spyre-inference | Granite 3.3 8B | 4 / 1 | 4 | 0.681 s | 1.484 s | 74.81 |
+| SGLang / Spyre | Gemma 4 26B-A4B (text) | 4 / 1 | 4 | 0.590 s | 2.156 s | 40.28 |
+| vLLM / spyre-inference | Gemma 4 26B-A4B (text) | 4 / 1 | 4 | 1.502 s | 2.648 s | 52.40 |
+
+SGLang/vLLM mean batch-latency ratios are 0.997 for Granite and 0.814 for
+Gemma. The raw records retain all timings, including Gemma timing variation;
+three repetitions per case provide a small performance sample.
+
+Both full-model runs completed every request at its requested token count.
+The logs contain no TorchSpyre `FallbackWarning`, scheduler exception or
+`sys._getframe` graph break. The integrated CPU suite passed 67 tests, then
+passed again after environment recovery. TP1 and TP4 batch-four micro-model
+canaries each matched the independent FP32 CPU reference on all 20 decoded
+two-token responses. Four worker ranks logged four distinct PCIe assignments.
+
+Granite's parsed answer letters agree on four of five subjects. Abstract
+algebra retains the historical D/B difference; 45 of 60 measured text slots
+are identical. For Gemma, all four non-algebra subjects emit the same parsed
+letter in both frameworks, while algebra emits no letter in SGLang and an A
+in one vLLM batch slot. Gemma's texts differ across frameworks, and some vLLM
+slots differ from one another. These raw prompts omit chat templates and use
+a 16-token cutoff, so a parsed letter may belong to a restated option rather
+than a final answer. The JSON records preserve the full outputs.
+
+The first Gemma attempts exposed CPU/AMX shape padding and an unaligned dense
+MLP shard; both were fixed. A later attempt lost generated kernels when the
+shared experiment directory disappeared during compilation. The completed
+Gemma run restored the exact native wheel and other pinned packages on
+pod-local storage, with unchanged backend source; warmup is excluded from all
+reported timings. Incomplete attempts are kept separate from the comparison.
+
+The earlier vLLM-only TP4 records used the default multimodal Gemma class with
+text inputs. The matched records above use the explicit text-only class.
+The original PR's TP1/B1 measurements below used worker80 and a different CPU;
+these results do not establish TP scaling relative to that baseline.
+
 ## SGLang vs vLLM on five MMLU items (2026-11-01)
 
 The machine-readable record is

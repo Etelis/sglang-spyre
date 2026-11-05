@@ -1,0 +1,48 @@
+{
+  "model": "google/gemma-4-26B-A4B-it",
+  "framework": "sglang",
+  "tensor_parallel_size": 4,
+  "data_parallel_size": 1,
+  "batch_size": 4,
+  "max_new_tokens": 16,
+  "context_length": 2048,
+  "dataset": "cais/mmlu",
+  "dataset_revision": "c30699e8356da336a370243923dbaf21066bb9fe",
+  "max_num_batched_tokens": 512,
+  "prefix_caching": false,
+  "batch_composition": "4 copies of each case",
+  "warmups": 1,
+  "iterations": 3,
+  "model_override": {
+    "architectures": [
+      "Gemma4ForCausalLM"
+    ]
+  },
+  "timing_method": "batch completion time; one-token request is a TTFT proxy",
+  "engine_args": {
+    "model_path": "google/gemma-4-26B-A4B-it",
+    "device": "cpu",
+    "attention_backend": "spyre_paged",
+    "dtype": "float16",
+    "tp_size": 4,
+    "dp_size": 1,
+    "page_size": 128,
+    "context_length": 2048,
+    "max_total_tokens": 8192,
+    "max_running_requests": 4,
+    "chunked_prefill_size": 512,
+    "disable_radix_cache": true,
+    "disable_cuda_graph": true,
+    "random_seed": 0,
+    "log_level": "warning",
+    "json_model_override_args": "{\"architectures\": [\"Gemma4ForCausalLM\"]}"
+  },
+  "software": {
+    "torch": "2.13.0+cpu",
+    "torch-spyre": "0.1.0.dev2107+head.g64870622",
+    "sglang": "0.5.21",
+    "transformers": "5.16.1"
+  },
+  "examples": [],
+  "complete": false
+}

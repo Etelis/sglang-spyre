@@ -15,6 +15,14 @@ The reference points used in this doc:
   measured model support and the SGLang-vs-vLLM comparison at that baseline;
   the older Granite-1B TPS figures in §4 are prototype validation numbers.
 
+The current path uses head-major paged KV and compiled decoder blocks, plus
+experimental single-node FP16 TP with DP1 and PP1. §5 separates the historical
+TP1, batch-one parity baseline from the completed TP4/DP1/batch-four
+Granite 8B and Gemma-4 text benchmarks. CPU tests and TP1/TP4 micro-model
+CPU-reference checks cover the new path; benchmark completion does not imply
+identical generated outputs. The mode-based descriptions in §3–4 record the
+earlier prototype rather than the current paged runtime.
+
 ---
 
 ## TL;DR
@@ -53,10 +61,10 @@ The two frameworks ask very different things of a device backend:
   factories (KV pool class, paged allocator class, attention backend),
   declare `init_backend()` for per-process device init, and that's it.
   No Worker class to subclass, no separate ModelRunner. Sampling and
-  scheduling are device-agnostic at SGLang's layer; with `device="cpu"`
-  the model body stays on CPU, attention crosses to the device, and no
-  staging is required. With `device="spyre"`, ~10 lines of boundary
-  hooks accomplish what `_SpyreModelWrapper` does in vLLM.
+  scheduling remain on the host with `device="cpu"`, while
+  `SGLANG_FORCE_DEVICE_SPYRE=1` places the model body on Spyre. Boundary
+  hooks stage model inputs and return host logits. A scheduler bootstrap
+  hook publishes each TP worker's placement before native backend loading.
 - **Attention base class**: vLLM's `AttentionBackend` is an interface —
   every plugin reimplements KV gather, block-table interpretation,
   extend-vs-decode dispatch, GQA / causal handling. SGLang's
@@ -73,10 +81,9 @@ The two frameworks ask very different things of a device backend:
   cleanly at `page_size=1` without special cases.
 - **Core source patches**: vLLM V1's plugin contract is clean — no core
   edits needed. SGLang core is younger and assumes CUDA/Triton in a few
-  places; we ship four small idempotent patches in
-  `sglang_oot_patches/apply.py` (memory_pool_host CUDA-only guard, vllm
-  optional import in rotary base, support_triton allowlist,
-  SUPPORTED_DEVICES whitelist). All upstreamable.
+  places; we ship idempotent compatibility patches in
+  `sglang_oot_patches/apply.py`, including the worker bootstrap hook,
+  optional CUDA imports and device allowlists.
 
 The bottom line on integration: **vLLM has a higher floor of plugin
 machinery you must implement; SGLang has a lower floor but requires
@@ -89,9 +96,9 @@ The 2026-11-01 sync ports every Spyre mechanism spyre-inference's text
 decoders use: MoE expert dispatch, sliding-window attention, logit
 soft-capping and per-layer head shapes. The two models spyre-inference
 benchmarks as Granite 8B and Gemma 4, `granite-3.3-8b-instruct` and
-`gemma-4-26B-A4B-it`, are validated end to end against spyre-inference on
-the same card. §5 lists what is validated, what merely runs, and what is
-still blocked.
+`gemma-4-26B-A4B-it`, were validated end to end against spyre-inference on
+the same card at TP1 and batch one. §5 separates that historical evidence
+from the experimental TP path and remaining limitations.
 
 ### When vLLM's attention approach wins; when RadixCache wins
 
@@ -108,15 +115,13 @@ The two attention layouts optimise for different workload shapes:
 | **High-concurrency, prompts > KV cache** (eviction-dominated regimes) | **vLLM** | More mature eviction policy, better-tuned allocator. |
 | **Large contiguous KV reads** (HBM-equipped GPUs; AIU 1.5 with HBM3e) | **vLLM** block-paged | Block layout is a closer fit for large-block DMA than per-token addressing. |
 
-**Spyre-specific addendum**: today, even where RadixCache *would* help,
-Spyre's static-shape constraint forces a BMM-against-one-hot for
-runtime indexing — which costs more than the prefix re-transfer it
-saves on small models. The dynamic-shapes refactor (KTIR
-`construct_indirect_access_tile` lowering) replaces the BMM with real
-`cache[block_table[i]]` indirection and **makes RadixCache prefix hits
-genuinely free on Spyre** for the first time. That is the regime where
-SGLang's structural advantage shows up as actual TPS gains. See §6 for
-the differential impact on each framework.
+**Spyre-specific addendum**: the current head-major paged kernels already
+walk physical pages indirectly, replacing the older BMM-against-one-hot
+prototype. Static query, KV and batch buckets still affect padding and
+warmup cost. Prefix-sharing performance needs a shared-prefix workload;
+neither the historical batch-one comparison nor the new batch-four harness
+with prefix caching disabled measures that benefit. See §6 for the remaining
+shape constraints.
 
 For IBM-internal workloads (RAG with shared system prompts, agent
 flows, multi-turn chat), the workload pattern matrix above lines up
@@ -329,6 +334,10 @@ a Spyre-relevant tiebreaker (see "Quantization & low precision" above).
 
 ## 3. Attention approaches
 
+This section retains the early mode-1/mode-2 prototype comparison. The
+current `spyre_paged` backend instead uses spyre-inference's head-major
+page-walking kernels and its metadata builder, including batched decode.
+
 The two libraries arrive at the same shape of computation but with
 materially different layout assumptions, which matters for what's hard
 on Spyre.
@@ -500,33 +509,28 @@ Most of these go away with the dynamic-shapes refactor (see §6).
 
 | Workaround | What it does | Post-refactor status |
 |---|---|---|
-| `RANK`/`WORLD_SIZE`/`LOCAL_RANK`/`LOCAL_WORLD_SIZE` env vars set before worker spawn | `libspyre_comms.so` reads at dlopen — SEGV in `libsenlib-dd2.so` if missing | likely persists (env-var contract of `libspyre_comms`); not a refactor target |
+| `RANK`/`WORLD_SIZE`/`LOCAL_RANK`/`LOCAL_WORLD_SIZE` published per worker before native library loading | `libspyre_comms.so` reads at dlopen; the Engine parent disables autoload and leaves these variables unset | likely persists (env-var contract of `libspyre_comms`); not a refactor target |
 | Single-tenant VFIO guard (`init_backend` no-op in parent) | Only one process can open the AIU card | persists until VFIO multi-tenant lands; orthogonal to dynamic shapes |
 | `addmm` decomposition patch (torch-spyre #1420) | First FX trace crashes without it | likely fixed by the refactor's lowering rewrite |
 | RoPE cache forced to CPU | `1.0 / (base ** (arange / rotary_dim))` triggers `DtException 4Bsplat` | likely fixed (the bad lowering pattern is in scope of the rewrite) |
-| `_attn_4d` bucketing (`KV_LENGTH_ALIGNMENT=256`, `QUERY_CHUNK_SIZE=32`) | Static shapes only — every distinct length is a separate compiled graph | **fixed by the refactor — variable-length attention without bucketing** |
-| `num_seqs == 1` hard-coded in attention backends | Continuous batching unsupported on the device side | **fixed by the refactor** |
-| BMM-against-one-hot scatter/gather (mode 1 / `SpyreAttentionExpBackend`) | Replaces unsupported runtime tensor indexing | **fixed by the refactor** (KTIR `construct_indirect_access_tile` lowering replaces the BMM with real `cache[block_table[i]]` indirection) |
+| Static query, KV and batch buckets | Several sequences are supported, but compiled extents and padding depend on bucket selection | dynamic shapes may reduce variant count and padding; not required for batching |
+| BMM-against-one-hot scatter/gather (historical mode 1 / `SpyreAttentionExpBackend`) | Replaced runtime tensor indexing in the early prototype | already replaced by head-major indirect page walks in the current runtime |
 | Triton allocator override (SGLang `alloc_extend`/`alloc_decode` for `page_size > 1`) | Stock allocator dispatches Triton; no Spyre Triton backend | possibly fixed if SGLang adopts a torch-native fallback path; orthogonal to the Spyre refactor |
-| Four small SGLang core patches in `sglang_oot_patches/apply.py` (CUDA-only guard in `memory_pool_host`, optional `vllm._custom_ops` in rotary base, `support_triton` allowlist, `SUPPORTED_DEVICES` whitelist) | Teaches SGLang that an OOT, non-Triton, non-CUDA device is a real thing | likely upstreamable to SGLang independently of the Spyre refactor; not a permanent SGLang-specific cost |
+| SGLang compatibility patches in `sglang_oot_patches/apply.py` | Adds the OOT worker bootstrap and guards CUDA/Triton assumptions | independent of the Spyre dynamic-shapes refactor |
 
 The SGLang core patches are the only entry on this list that is
 SGLang-specific. They aren't a Spyre-toolchain issue at all — they're
-SGLang OOT-readiness gaps. Reasonable to upstream; until then, four
-short `sed` lines applied at install time.
+SGLang OOT-readiness gaps. They are applied idempotently at install time.
 
-The asymmetry to call out: vLLM has a specific Spyre integration cost
-that SGLang does not — **the dual-buffer dance**. vLLM's V1 sampler
+Both integrations must manage a host/device boundary. vLLM's V1 sampler
 runs CPU-side and expects integer inputs (token IDs, positions) to
 arrive on CPU, while model tensors live on Spyre. `TorchSpyreModelRunner`
 maintains parallel CPU staging buffers and `_SpyreModelWrapper` handles
-the conversion at the model boundary. SGLang's design is more lenient
-here: with `device="cpu"` (where the model body stays on CPU and only
-attention crosses to Spyre, our mode 2), no staging is needed at all;
-with `device="spyre"`-equivalent (our mode 4), boundary hooks at
-embed-output / body-output handle the same role in ~10 lines. The
-dynamic-shapes refactor doesn't change this — it's a vLLM V1 design
-choice, not a Spyre toolchain limitation.
+the conversion at the model boundary. The current SGLang path also keeps
+scheduling and sampling on CPU while its model body runs on Spyre, using
+boundary hooks for the transfers. At TP4 it uses native Spyre collectives
+for device tensors and Gloo for CPU control tensors and gathered logits.
+This host/device boundary remains relevant with dynamic shapes.
 
 ### Concrete TPS from this repo's prototype (Granite-1B, 200 tok)
 
@@ -563,12 +567,56 @@ end on a Spyre card with this baseline and its greedy output compared with
 spyre-inference/vLLM on the same card; **runs** means it loads and generates
 through code paths validated on another model, without that comparison.
 
-### Validated against spyre-inference
+### Historical TP1, batch-one parity (2026-11-01)
 
 | Model | Mechanisms exercised | Result |
 |---|---|---|
 | `ibm-granite/granite-3.3-8b-instruct` | dense GQA attention, full rotary RoPE, SiLU MLP, tied LM head | Same answer as vLLM on 4/5 MMLU items. The fifth is a 0.1-logit tie that the fp32 reference resolves SGLang's way. Latency 1.00x vLLM. |
 | `google/gemma-4-26B-A4B-it` (text backbone) | 128-expert top-8 MoE with full-softmax routing, sliding-window (1024) and full attention layers with different head sizes (256/512) and KV heads (8/2), proportional partial RoPE, final logit soft-capping (30), K=V full-attention layers | Same answer letter as vLLM wherever both produce one; texts identical on 2/5 items and diverging at fp16 noise on the rest. Latency 0.99x vLLM. See [`BENCHMARK.md`](../BENCHMARK.md). |
+
+### Experimental single-node TP (2026-11-05)
+
+The FP16 path now supports one local TP world with DP1 and PP1. SGLang's
+native loaders shard linear and expert weights; the adapter adds the expert
+output sum and shards Gemma's separate Spyre LM head while retaining its full
+CPU embedding. Logits are gathered through Gloo and trimmed to the true
+vocabulary. Attention uses local per-rank head counts, including replicated
+KV heads when the global KV head count is smaller than TP size.
+
+The 67 CPU tests cover worker setup, collective routing, model sharding and
+four-request decode/mixed prefill, and passed twice, including in a fresh
+recovery environment. TP1 and TP4 batch-four canaries used
+`ibm-ai-platform/micro-g3.3-8b-instruct-1b`: two greedy tokens for each of five
+pinned MMLU prompts, with each configuration's 20 decoded responses matching
+an fp32 CPU reference.
+
+The matched TP4/DP1/batch-four benchmark completed for both larger models:
+
+| Model | SGLang mean batch latency | vLLM mean batch latency |
+|---|---:|---:|
+| Granite 3.3 8B | 1.479 s | 1.484 s |
+| Gemma 4 26B-A4B (text) | 2.156 s | 2.648 s |
+
+These are warmed 16-token batch latencies. All new hardware runs used the
+same pod on `worker49` with an Intel Xeon Platinum 8474C CPU. Gemma's SGLang
+compile cache moved to pod-local storage after the shared folder was deleted;
+the source was unchanged and warmup was excluded from the measurements.
+Granite's answer differs on abstract algebra. Gemma's generated texts diverge,
+but answer letters agree on the other four cases; on abstract algebra SGLang
+emits no A–D answer and vLLM emits A in one of four slots. See
+[BENCHMARK.md](../BENCHMARK.md) and the
+[matched records](../experiments/tp4-b4-2026-11-05/results/matched-summary.json)
+for the full output comparison and timing components.
+
+The [README](../README.md#run) gives a four-device launch example. The
+[batch-four harness](../experiments/tp4-b4-2026-11-05/sglang_batch_bench.py)
+submits four copies per prompt with context 2048, 16 greedy tokens, a
+512-token prefill budget, one warmup and three measurements. A one-token
+batch completion time is the TTFT proxy; aggregate decode throughput is
+`4 * (16 - 1) / (mean_16_token_latency - mean_1_token_latency)`. Prefix caching
+is disabled. Both frameworks must use the same device allocation and CPU
+thread budget; the Gemma vLLM leg needs `--text-only` to match SGLang's
+`Gemma4ForCausalLM` architecture override.
 
 ### Runs, not validated in this sync
 
@@ -585,7 +633,7 @@ through code paths validated on another model, without that comparison.
 | FP8 checkpoints (`granite-*-fp8`) and FP8 KV cache | spyre-inference's `spyre.scaled_mm` linear and QFP8CH KV pages are not ported. |
 | Vision and multimodal (`granite-vision-4.1-4b`, Gemma-4 vision, Pixtral) | Vision towers are not ported; Gemma-4 is served through its text backbone. |
 | Embedding, reranker and token-classification models | SGLang text generation only. |
-| Tensor parallelism > 1 | The platform rejects TP>1; spyre-inference's TP4 configs run here at TP1 when they fit one card. |
+| DP, PP, multi-node execution, expert parallelism and DP attention | The experimental distributed path supports one local TP world only. |
 | ALiBi models | Only the head-major KV layout is ported, which carries no ALiBi (as in spyre-inference). |
 
 ---
@@ -594,72 +642,64 @@ through code paths validated on another model, without that comparison.
 
 The Spyre toolchain is moving from static-shape Inductor lowering (the
 current world) to a dynamic-shape regime where graphs can accept
-varying sequence lengths and batch sizes without recompilation. This
-matters more for one of the two frameworks than the other.
+varying sequence lengths and batch sizes without recompilation. The
+benefit for each framework depends on the workloads and kernels covered.
 
 ### What's currently shape-sensitive on Spyre
 
-- **Query length**. The current `_attn_4d` requires queries bucketed
-  to `QUERY_CHUNK_SIZE=32`. Shorter queries get padded; longer get
-  chunked. Each distinct bucket is a separate compiled graph in the
-  kernel cache.
-- **KV length**. Same — padded to multiples of `KV_LENGTH_ALIGNMENT
-  =256`. Compile-cache miss on each new bucket.
-- **Batch size**. Currently `num_seqs == 1` is the only validated
-  shape; both `spyre-inference` and our plugin assert this in the
-  attention backend.
-- **Block-table size**. The BMM scatter/gather builds an
-  `[N_blocks, block_size, num_blocks]` one-hot tensor whose shape is
-  fixed at compile time.
+- **Query length**. The current paged backend buckets non-decode queries
+  in 512-token steps, capped by the configured prefill budget. Model-body
+  token buckets and attention variants are compiled separately.
+- **KV length**. The configurable KV ladder rounds lengths to whole
+  128-token pages by default. Bucket extents determine recorded variants.
+- **Batch size**. Batched decode has sequence-count buckets (1, 2 and 4
+  for a four-request limit), combined with KV chunk dimensions. Several
+  sequences and mixed prefill/decode already work; the historical large-model
+  parity measurements used batch one.
+- **Page-table extents**. Physical page indices can change at runtime
+  through the head-major indirect page walk. The tensor extents used by
+  each compiled variant remain bucketed.
 
 ### What dynamic shapes unlock
 
-After the refactor:
-- Variable-length attention without bucketing. The query and KV
-  dimensions become symbolic; one compiled kernel handles the full
-  shape range.
-- Real continuous batching. `num_seqs > 1` works; the scheduler can
-  actually batch across requests.
-- Real radix prefix hits. The block table can vary in shape per step
-  without triggering recompile.
-- KTIR `construct_indirect_access_tile` lowering — the proper fix for
-  runtime tensor indexing, replacing the BMM-against-one-hot workaround
-  with real `cache[block_table[i]]` indirection.
+If the refactor supports these kernel paths, symbolic query, KV and batch
+dimensions could reduce the number of compiled variants, padding overhead
+and warmup cost. Continuous batching and indirect page walks are already
+implemented; dynamic shapes would make their shape coverage more flexible.
+Shared-prefix reuse already follows SGLang's paged cache semantics, while
+variable page-table extents could reduce specialization costs. These are
+prospective benefits, requiring measurement on the resulting compiler stack.
 
 ### What it means differentially for vLLM vs SGLang
 
 **For vLLM**:
-- The biggest current pain (`SpyreAttentionExpBackend`'s BMM scatter/
-  gather mask rebuild every step) collapses into a single indexed gather.
-- Continuous batching, currently unused on Spyre because `num_seqs==1`
-  is hard-coded, becomes available — and vLLM's continuous batching is
-  the more mature implementation. This is the bigger win on the vLLM
-  side: the scheduler is ready, only the backend has been holding back.
+- The current head-major kernels already avoid the old experimental
+  BMM scatter/gather path. Dynamic shapes could reduce their bucket and
+  warmup costs.
+- Existing continuous batching could cover more request mixtures with
+  fewer static variants. Its serving benefit depends on workload and
+  scheduler behavior rather than a one-sequence device restriction.
 - Block-table dynamism aligns naturally with vLLM's existing layout
   (`block_table[seq, page]` already varies per step on GPU; Spyre just
   catches up).
 
 **For SGLang**:
-- RadixCache prefix hits become *real* on device — currently the
-  prefix-cached path in mode 2 still re-transfers the prefix KV every
-  step because it lives on CPU; in mode 1 the BMM mask rebuild eats
-  the savings. With dynamic shapes + real indirection, neither cost
-  applies. **This is the configuration where SGLang's structural
-  advantage (any-length prefix sharing) translates to actual Spyre TPS
-  gains.**
-- Per-token KV addressing (`req_to_token` instead of block IDs) was
-  always a closer fit for indexed-gather lowering than vLLM's block
-  layout. Dynamic shapes don't change this; they just make it usable.
-- `num_seqs > 1` unlocks the same continuous-batching gain as on the
-  vLLM side; SGLang's CB is comparable but not a differentiator.
+- RadixCache already supplies reusable physical pages to the on-device
+  paged cache. Dynamic shapes could reduce specialization overhead when
+  prefix lengths and request mixtures vary; a shared-prefix benchmark
+  is needed to measure the effect.
+- The adapter translates SGLang's per-token `req_to_token` indices into
+  the same head-major physical page layout used by spyre-inference.
+  Dynamic page-table extents could reduce variant count for that adapter.
+- Multi-request attention already works. Dynamic shapes could reduce
+  its static bucket costs, as on the vLLM side.
 
 **Summary**:
 
-> Dynamic shapes help vLLM more on the **continuous-batching** axis (its
-> existing strength becomes usable on Spyre) and help SGLang more on the
-> **prefix-sharing-on-device** axis (its existing strength becomes
-> usable on Spyre). Whichever workload dominates Spyre's target use
-> cases is the one that should drive the framework choice.
+> Both frameworks already support multi-request paged attention. Dynamic
+> shapes could reduce padding and compilation costs for each. Comparing
+> continuous batching and prefix sharing requires workloads that exercise
+> those features; the current batch-four comparison disables prefix caching.
 
 For IBM-internal workloads (long shared prompts, RAG, agent flows),
 the prefix-sharing axis is the bigger lever — favouring SGLang. For
@@ -685,8 +725,9 @@ workload shapes. But three structural observations:
    to plugin-side integration and Spyre's INT path was dropped, so
    vLLM's GPU INT-quant breadth doesn't carry over.
 3. **Dual-tracking is feasible.** The plugins share the same Spyre
-   primitives (`_attn_4d`, BMM scatter/gather, RoPE-on-CPU, env-var
-   ordering, addmm decomp fix). Maintaining both is mostly
+   primitives (head-major paged attention, MoE kernels, device RoPE,
+   native-library environment ordering and addmm decomposition fixes).
+   Maintaining both is mostly
    maintaining the integration glue, not duplicating the device-side
    work. The kernels are shared.
 

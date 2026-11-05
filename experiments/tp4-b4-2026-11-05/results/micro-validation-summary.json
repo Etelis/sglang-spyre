@@ -1,0 +1,14 @@
+{
+  "micro-sglang-tp4-b4": {
+    "complete": true,
+    "responses_matching_fp32_cpu_reference": 20,
+    "fallback_warnings": 0,
+    "deprecated_getter_graph_breaks": 0
+  },
+  "micro-sglang-tp1-b4": {
+    "complete": true,
+    "responses_matching_fp32_cpu_reference": 20,
+    "fallback_warnings": 0,
+    "deprecated_getter_graph_breaks": 0
+  }
+}

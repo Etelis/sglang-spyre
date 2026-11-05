@@ -5,3 +5,4 @@ __pycache__/
 .pytest_cache/
 *.so
 .DS_Store
+experiments/**/results/*.log
