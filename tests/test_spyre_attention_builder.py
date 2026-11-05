@@ -40,6 +40,7 @@ def _cpu_kernels(monkeypatch):
     monkeypatch.setattr(sa, "_page_attn_prefill_compiled", sa.page_attn_head_major_prefill_kernel)
     monkeypatch.setattr(sa, "_page_attn_decode_compiled", sa.page_attn_head_major_decode_kernel)
     monkeypatch.setattr(sa, "_batched_decode_compiled", sa.batched_decode_head_major_kernel)
+    monkeypatch.setattr(sa, "_reshape_compiled", sa.reshape_and_cache_head_major_kernel)
     monkeypatch.setattr(sa, "_run_with_capped_cores", lambda units, fn, *args: fn(*args))
     # Host stand-in for the device transfer: CPU index_copy_ takes int64 rows where
     # Spyre takes int32, so integer metadata is widened on the way "to the device".
@@ -177,3 +178,105 @@ def test_builder_rejects_unaligned_block_size():
         sa.SpyreAttentionMetadataBuilder(
             sa.GroupSpec(4, 2, 64, None), _Cfg(block_size=96), torch.float32
         )
+
+
+@pytest.mark.parametrize(
+    "heads,kv_heads,head,window",
+    [
+        pytest.param(8, 2, 128, None, id="granite-tp4"),
+        pytest.param(4, 2, 256, 128, id="gemma-sliding-tp4"),
+        # Gemma has two global KV heads across four ranks: KV heads replicate,
+        # while each rank still receives four distinct query heads.
+        pytest.param(4, 1, 512, None, id="gemma-full-tp4-kv-replicated"),
+    ],
+)
+@pytest.mark.parametrize("query_lens", [[1, 1, 1, 1], [1, 1, 7, 9], [7, 11, 2, 1]])
+def test_four_requests_with_tp4_head_geometry_match_dense(
+    monkeypatch, heads, kv_heads, head, window, query_lens
+):
+    """Different histories and physical pages must not mix requests' KV or rows."""
+    torch.manual_seed(19)
+    monkeypatch.setenv("SPYRE_BATCHED_DECODE", "1")
+    kv_lens = [63, 65, 137, 200]
+    num_blocks = [(n + BLOCK - 1) // BLOCK for n in kv_lens]
+    # Every history owns different, nonconsecutive pages, including a boundary
+    # on request 1. Reordering physical pages catches a sequence/page mix-up.
+    allocated = torch.randperm(sum(num_blocks)) + 1
+    pages, start = [], 0
+    for count in num_blocks:
+        pages.append(allocated[start : start + count].tolist())
+        start += count
+    # The device gather requires a strict subset of its source allocation.
+    # Leave enough unused pages for the batched dispatch, rather than making
+    # this accidentally test only the per-sequence fallback.
+    num_pages = max(len(allocated) + 2, 33)
+    spec = sa.GroupSpec(heads, kv_heads, head, window)
+    builder = sa.SpyreAttentionMetadataBuilder(
+        spec, _Cfg(max_num_seqs=4, min_num_kv_heads=kv_heads), torch.float32
+    )
+    impl = sa.SpyreHeadMajorAttention(
+        num_heads=heads,
+        num_kv_heads=kv_heads,
+        head_size=head,
+        scale=head**-0.5,
+        block_size=BLOCK,
+        staging_rows=513,
+        model_dtype=torch.float32,
+    )
+    kv_cache = sa.SpyrePagedKVCache(
+        torch.zeros(num_pages, kv_heads, BLOCK, head),
+        torch.zeros(num_pages, kv_heads, BLOCK, head),
+    )
+    k_rows, v_rows = impl.kv_slot_views(kv_cache)
+    block_table = torch.zeros(4, _Cfg.max_model_len // BLOCK, dtype=torch.int32)
+    queries, slots, references, new_keys, new_values = [], [], [], [], []
+    starts = [0]
+    for index, (kv_len, query_len) in enumerate(zip(kv_lens, query_lens)):
+        k = torch.randn(kv_len, kv_heads, head)
+        v = torch.randn(kv_len, kv_heads, head)
+        q = torch.randn(query_len, heads, head)
+        sequence_slots = torch.tensor(
+            [pages[index][t // BLOCK] * BLOCK + t % BLOCK for t in range(kv_len)]
+        )
+        context = kv_len - query_len
+        for h, indices in enumerate(
+            impl.kv_write_index(sequence_slots[:context], torch.device("cpu"))
+        ):
+            k_rows.index_copy_(0, indices, k[:context, h])
+            v_rows.index_copy_(0, indices, v[:context, h])
+        block_table[index, : num_blocks[index]] = torch.tensor(pages[index])
+        queries.append(q)
+        slots.append(sequence_slots[-query_len:])
+        new_keys.append(k[-query_len:])
+        new_values.append(v[-query_len:])
+        references.append(
+            _dense_reference(q, k, v, kv_len, query_len, head**-0.5, window, 0.0)
+        )
+        starts.append(starts[-1] + query_len)
+    md = builder.build(
+        sa.SeqBatch(
+            query_start_loc=torch.tensor(starts, dtype=torch.int32),
+            seq_lens=torch.tensor(kv_lens, dtype=torch.int32),
+            block_table=block_table,
+            slot_mapping=torch.cat(slots),
+        )
+    )
+    q_staging = torch.zeros(513, heads, head)
+    out_staging = torch.full_like(q_staging, float("nan"))
+    q_staging[: starts[-1]] = torch.cat(queries)
+    impl.do_kv_cache_update(
+        torch.cat(new_keys), torch.cat(new_values), kv_cache,
+        impl.kv_write_index(torch.cat(slots), torch.device("cpu")),
+    )
+    impl.forward(q_staging, out_staging, kv_cache, md)
+    if query_lens == [1, 1, 1, 1]:
+        assert md.padded_num_seqs == 4
+        assert impl._batched_decode_preconditions_met(md, num_pages)
+    elif query_lens[:2] == [1, 1]:
+        assert md.num_decode_seqs == 2 and md.padded_num_seqs == 2
+        assert impl._batched_decode_preconditions_met(md, num_pages)
+    else:
+        assert md.num_decode_seqs == 0
+    torch.testing.assert_close(
+        out_staging[: starts[-1]], torch.cat(references), atol=2e-4, rtol=2e-4
+    )

@@ -12,7 +12,7 @@ class SpyreSRTPlatform(SRTPlatform, SpyreDeviceMixin):
     - No CUDA graph capture/replay
     - FP16 compute, matching the current spyre-inference compatibility contract
     - KV cache lives on Spyre in a dense slot-major layout and uses indirect access
-    - TP=1 only (TP>1 requires spyreccl all_reduce, not yet stable)
+    - Single-node tensor parallelism over native spyreccl collectives
     - Static shapes only (Spyre Inductor cannot handle SymInt)
     """
 
@@ -57,12 +57,28 @@ class SpyreSRTPlatform(SRTPlatform, SpyreDeviceMixin):
         if getattr(server_args, "watchdog_timeout", 300) < 3600:
             server_args.watchdog_timeout = 3600
 
-        # TP=1 only
-        if getattr(server_args, "tp_size", 1) > 1:
-            raise ValueError(
-                "SpyreSRTPlatform: tensor parallelism > 1 is not yet supported. "
-                "Set --tp-size 1."
-            )
+        tp_size = getattr(server_args, "tp_size", 1)
+        if tp_size < 1:
+            raise ValueError("Spyre tensor parallel size must be positive.")
+        for name in ("dp_size", "pp_size", "nnodes", "ep_size", "moe_dp_size", "attn_cp_size", "dcp_size"):
+            if getattr(server_args, name, 1) not in (None, 1):
+                raise ValueError(f"Spyre supports one local TP world; {name} must be 1.")
+        if getattr(server_args, "enable_dp_attention", False):
+            raise ValueError("Spyre does not support DP attention.")
+        if tp_size > 1 and server_args.dtype not in ("float16", "half"):
+            raise ValueError("Spyre tensor parallelism requires float16.")
+        if tp_size > 1 and getattr(server_args, "device", "cpu") != "cpu":
+            raise ValueError("Spyre TP uses device=cpu with its model body on Spyre.")
+        for name, value in (
+            ("disable_custom_all_reduce", True), ("enable_mscclpp", False),
+            ("enable_torch_symm_mem", False), ("enable_symm_mem", False),
+            ("pre_warm_nccl", False),
+        ):
+            if hasattr(server_args, name):
+                setattr(server_args, name, value)
+        from sglang_spyre_backend.threading_config import configure_threading
+
+        configure_threading(worker_count=tp_size)
 
     # ------------------------------------------------------------------
     # Subsystem factory methods
@@ -138,129 +154,82 @@ class SpyreSRTPlatform(SRTPlatform, SpyreDeviceMixin):
     # ------------------------------------------------------------------
 
     def init_backend(self) -> None:
-        """Initialize the Spyre device backend in this worker.
+        """Load native libraries only after the scheduler publishes placement.
 
-        Mirrors spyre-inference's TorchSpyreWorker.init_device() sequence:
-
-          1. Set RANK/WORLD_SIZE/LOCAL_RANK/LOCAL_WORLD_SIZE env vars BEFORE
-             importing torch_spyre — libspyre_comms.so reads them at dlopen
-             time. Skipping this step makes torch.bmm / F.linear crash with
-             a meta_tensor no_dispatch AssertionError on the first call.
-
-          2. Call torch_spyre._autoload() which registers the "spyre"
-             PrivateUse1 device, exposes torch.spyre.* APIs, registers
-             eager kernels for aten.bmm / aten.mm / etc. (each wrapped
-             with torch.compile internally), and registers the spyreccl
-             distributed backend.
-
-          3. Pin this worker's device.
-
-          4. Register the attention backends + on-device ops (safe here;
-             sglang.srt is fully imported by now).
-
-          5. Install the max-on-Spyre custom ops + weight-placement hook
-             (no-op unless device="spyre").
-
-          6. Patch torch._inductor.decomposition with the Spyre addmm
-             decomposition. Workaround for torch-spyre issue #1420 —
-             without it, the first FX graph trace crashes. Runs last: the
-             table only needs to exist before the first forward.
-
-        SINGLE-TENANT GUARD: the Spyre AIU is a single-tenant VFIO device — only
-        one OS process may open it. SGLang calls init_backend() at *module import*
-        of model_executor.model_runner (model_runner.py:244), which runs in BOTH
-        the parent Engine process and the spawned scheduler subprocess. If both
-        open the card, the second dies with "Device or resource busy". So we open
-        the device ONLY in the worker (scheduler) process and make this a no-op in
-        the main/parent process — exactly the discipline spyre-inference uses
-        (platform.py: `if multiprocessing.current_process().name != "MainProcess"`).
+        SGLang also calls this at model_runner import. That call is deliberately
+        card-free; the OOT bootstrap hook calls again immediately before WORLD
+        initialization, when every worker has its real rank and local card.
         """
-        import multiprocessing
+        from sglang.srt.runtime_context import publish_role
+
+        if publish_role() != "scheduler":
+            return
+        if getattr(self, "_spyre_backend_inited", False) or getattr(
+            self, "_spyre_backend_initializing", False
+        ):
+            return
+        # Installing the post-load hook imports model_runner, whose module body
+        # calls init_backend again. Native setup must run once per worker.
+        self._spyre_backend_initializing = True
+        try:
+            self._init_worker_backend()
+            self._spyre_backend_inited = True
+        finally:
+            self._spyre_backend_initializing = False
+
+    def _init_worker_backend(self) -> None:
+        from sglang.srt.runtime_context import get_device, get_parallel
+
+        parallel = get_parallel()
+        if parallel.dp_size != 1 or parallel.pp_size != 1:
+            raise ValueError("Spyre native collectives require a single local TP world.")
+        from sglang_spyre_backend.worker import configure_rank_environment, keep_sigterm_handler
+
+        configure_rank_environment(
+            rank=parallel.tp_rank,
+            world_size=parallel.tp_size,
+            local_rank=get_device().gpu_id,
+        )
+        import logging
         import os
 
-        # SINGLE-TENANT GUARD: do not open the card in the parent ("MainProcess").
-        # The scheduler runs as an mp.Process named "Process-N"; only it should
-        # hold the device. (Idempotent across re-imports within the worker.)
-        if multiprocessing.current_process().name == "MainProcess":
-            return
-        if getattr(self, "_spyre_backend_inited", False):
-            return
-
-        # 1. spyreccl env vars (must be set before torch_spyre import)
-        os.environ.setdefault("TORCH_DEVICE_BACKEND_AUTOLOAD", "0")
-        os.environ.setdefault("RANK", "0")
-        os.environ.setdefault("WORLD_SIZE", "1")
-        os.environ.setdefault("LOCAL_RANK", "0")
-        os.environ.setdefault("LOCAL_WORLD_SIZE", "1")
-
-        # 2. torch_spyre autoload
         import torch
-        import torch_spyre
 
-        torch_spyre._autoload()
+        local_rank = get_device().gpu_id
+        devices = os.environ.get("SPYRE_DEVICES", "").split(",")
+        address = (
+            os.environ.get(f"AIU_WORLD_RANK_{devices[local_rank].strip()}", "unknown")
+            if local_rank < len(devices)
+            else "unknown"
+        )
+        logging.getLogger(__name__).info(
+            "Spyre worker rank=%d/%d local_rank=%d pcie_address=%s",
+            parallel.tp_rank, parallel.tp_size, local_rank, address,
+        )
+        with keep_sigterm_handler():
+            import torch_spyre
 
-        # 3. pin device + ensure the device-module stubs are present
-        if hasattr(torch, "spyre"):
-            torch.spyre.set_device(0)
+            torch_spyre._autoload()
+            torch.spyre.set_device(get_device().gpu_id)
             from sglang_spyre_backend import _install_device_module_stubs
+            from sglang_spyre_backend.distributed import install_distributed_hooks
 
             _install_device_module_stubs(torch.spyre)
-            # Eagerly CLAIM the single-tenant card in THIS worker process. set_device
-            # only records the index; the VFIO open is lazy (first tensor op). Pinning
-            # it here makes the worker the deterministic owner before any forward runs.
-            # NOTE: the real cure for the parent-vs-worker "Device or resource busy"
-            # race is keeping torch_spyre's autoload OFF in the parent — set
-            # TORCH_DEVICE_BACKEND_AUTOLOAD=0 in the environment before the parent
-            # imports anything (activate() sets it, but only if it runs before any
-            # other import of torch_spyre / torch.spyre).
-            try:
-                _ = torch.zeros(1, device="spyre")
-            except Exception:
-                pass
+            install_distributed_hooks()
+            # Materialize on the selected card before constructing spyreccl groups.
+            # Do not suppress an acquisition failure: continuing would strand peers.
+            torch.empty(64, device="spyre", dtype=torch.float16)
+        import sglang_spyre_backend.register  # noqa: F401
+        from sglang_spyre_backend.custom_ops import install
 
-        # 4. Register the attention backends + on-device ops NOW (safe here:
-        #    init_backend runs after sglang.srt is fully imported, unlike
-        #    activate() which runs mid-import). Side-effect imports.
-        try:
-            import sglang_spyre_backend.register  # noqa: F401
-        except Exception:
-            import logging
+        install()
+        # Retain the pinned stack's addmm decomposition repair (torch-spyre #1420).
+        import torch._inductor.decomposition
+        from torch_spyre._inductor.decompositions import spyre_decompositions
 
-            logging.getLogger(__name__).exception(
-                "Spyre op/backend registration failed"
-            )
-
-        # 5. Max-on-Spyre wiring: register MultiPlatformOp Spyre forwards
-        #    (RMSNorm/SiluAndMul/RoPE) and install a post-load hook that moves
-        #    Linear weights onto Spyre and modifies the model body
-        #    (see bodify_model_for_spyre). The hook is a no-op unless the user
-        #    selected device="spyre" — modes 2/3 are unaffected. Idempotent.
-        try:
-            from sglang_spyre_backend.custom_ops import install as _install_max_on_spyre
-
-            _install_max_on_spyre()
-        except Exception:
-            import logging
-
-            logging.getLogger(__name__).exception(
-                "Spyre custom-op installation failed (max-on-Spyre disabled)"
-            )
-
-        self._spyre_backend_inited = True
-
-        # 6. addmm decomposition workaround (torch-spyre issue #1420).
-        #    Runs last, after registration — the decomposition table only
-        #    needs to be in place before the first FX graph trace, which
-        #    happens on the first forward, not during init.
-        try:
-            import torch._inductor.decomposition
-            from torch_spyre._inductor.decompositions import spyre_decompositions
-
-            for op, impl in spyre_decompositions.items():
-                if "addm" in op.name():
-                    torch._inductor.decomposition.decompositions[op] = impl
-        except ImportError:
-            pass
+        for op, implementation in spyre_decompositions.items():
+            if "addm" in op.name():
+                torch._inductor.decomposition.decompositions[op] = implementation
 
     # ------------------------------------------------------------------
     # MultiPlatformOp dispatch

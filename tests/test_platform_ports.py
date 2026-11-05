@@ -143,6 +143,46 @@ def test_platform_defaults_follow_spyre_inference():
     assert args.disable_overlap_schedule and args.disable_hybrid_swa_memory
 
 
+def test_worker_backend_initialization_is_safe_against_recursive_import(monkeypatch):
+    from sglang.srt import runtime_context
+    from sglang_spyre_backend.platform import SpyreSRTPlatform
+
+    monkeypatch.setattr(runtime_context, "publish_role", lambda: "scheduler")
+    platform = SpyreSRTPlatform.__new__(SpyreSRTPlatform)
+    calls = []
+
+    def initialize():
+        calls.append(1)
+        platform.init_backend()  # model_runner's module-body callback
+
+    monkeypatch.setattr(platform, "_init_worker_backend", initialize)
+    platform.init_backend()
+    platform.init_backend()
+    assert calls == [1]
+    assert platform._spyre_backend_inited
+    assert not platform._spyre_backend_initializing
+
+
+def test_failed_worker_backend_initialization_can_be_retried(monkeypatch):
+    from sglang.srt import runtime_context
+    from sglang_spyre_backend.platform import SpyreSRTPlatform
+
+    monkeypatch.setattr(runtime_context, "publish_role", lambda: "scheduler")
+    platform = SpyreSRTPlatform.__new__(SpyreSRTPlatform)
+
+    def fail():
+        raise RuntimeError("backend import failed")
+
+    monkeypatch.setattr(platform, "_init_worker_backend", fail)
+    with pytest.raises(RuntimeError, match="backend import failed"):
+        platform.init_backend()
+    assert not platform._spyre_backend_initializing
+    assert not getattr(platform, "_spyre_backend_inited", False)
+    monkeypatch.setattr(platform, "_init_worker_backend", lambda: None)
+    platform.init_backend()
+    assert platform._spyre_backend_inited
+
+
 def test_gemma4_router_norm_keeps_the_folded_scale():
     """The router folds scale * hidden**-0.5 into a with_scale=False norm's weight,
     which SGLang applies on its CUDA path; the Spyre body must apply it too."""

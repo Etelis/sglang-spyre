@@ -3,20 +3,9 @@
 import contextlib
 import os
 
-# CRITICAL: spyreccl env vars must be set at MODULE IMPORT TIME, not in
-# init_backend(). libspyre_comms.so reads RANK/WORLD_SIZE/LOCAL_RANK/
-# LOCAL_WORLD_SIZE at dlopen — and the scheduler subprocess (where the
-# Spyre work actually runs) inherits env from the parent at fork/spawn,
-# *before* any of our Python code runs. Setting these in init_backend
-# is too late: libspyre_comms is already mapped, and SEGVs deep inside
-# libsenlib-dd2.so on the first device op (offset +0x42accf, deterministic).
-# os.environ.setdefault is a no-op if the user already set them in the shell,
-# so this is also idempotent with the documented `export RANK=0 ...` recipe.
+# Native comms reads placement when its library loads. Only the scheduler
+# bootstrap has the actual TP rank, so platform discovery must stay card-free.
 os.environ.setdefault("TORCH_DEVICE_BACKEND_AUTOLOAD", "0")
-os.environ.setdefault("RANK", "0")
-os.environ.setdefault("WORLD_SIZE", "1")
-os.environ.setdefault("LOCAL_RANK", "0")
-os.environ.setdefault("LOCAL_WORLD_SIZE", "1")
 
 
 def _install_device_module_stubs(spyre_mod) -> None:
@@ -108,75 +97,17 @@ def _install_when_imported(target: str, module: str, func: str) -> None:
 
 
 def activate():
-    """Return platform class name if Spyre hardware is available.
+    """Discover Spyre without loading the native runtime in the Engine parent."""
+    import importlib.util
 
-    Called by SGLang's platform discovery mechanism at startup.
-    Registers the Spyre attention backend as a side-effect.
-    """
-    try:
-        import os
-        # spyreccl env vars MUST be set before torch_spyre is imported.
-        # libspyre_comms.so reads them at dlopen — late-setting causes
-        # silent failure modes (e.g., bmm crash with meta_tensor errors).
-        os.environ.setdefault("TORCH_DEVICE_BACKEND_AUTOLOAD", "0")
-        os.environ.setdefault("RANK", "0")
-        os.environ.setdefault("WORLD_SIZE", "1")
-        os.environ.setdefault("LOCAL_RANK", "0")
-        os.environ.setdefault("LOCAL_WORLD_SIZE", "1")
-
-        # spyre-inference's configure_threading (#678, #1254): clamp the CPU thread
-        # pools and default OMP_WAIT_POLICY=PASSIVE before the scheduler process
-        # is spawned, which reads them at its torch import.
-        try:
-            from sglang_spyre_backend.threading_config import configure_threading
-
-            configure_threading(worker_count=1)
-        except Exception as exc:  # never block platform discovery on this
-            import logging
-
-            logging.getLogger(__name__).warning("Spyre threading config skipped: %s", exc)
-
-        # Probe: does torch_spyre import? That's enough to claim the platform —
-        # device availability will be checked at init_backend() time.
-        import torch
-        import torch_spyre  # noqa: F401
-
-        # Install the CUDA-style Stream/Event/stream stubs on torch.spyre BEFORE
-        # SGLang is imported. SGLang reads get_device_module(device).Event/.Stream
-        # at *import* time (class-body annotations in cache_controller /
-        # hisparse_coordinator / hybrid_cache_controller), so under device="spyre"
-        # these must exist or `import sglang.srt` raises AttributeError. torch_spyre
-        # is compile-oriented and ships none of them; Spyre runs eagerly so they are
-        # safe no-ops.
-        #
-        # IMPORTANT: activate() runs *inside* SGLang's platform-resolution, which is
-        # itself triggered while `sglang.srt.*` is mid-import. So we must NOT import
-        # any `sglang.srt.*`-dependent module here (e.g. register.py / the attention
-        # backends / the op layers) — that re-enters a partially-initialised sglang
-        # and makes activate() throw -> return None -> "plugin returned None". The
-        # attention-backend and op registration is therefore done lazily in
-        # SpyreSRTPlatform.init_backend(), not here. Keep activate() minimal.
-        try:
-            torch_spyre._autoload()
-        except Exception:
-            pass
-        if hasattr(torch, "spyre"):
-            _install_device_module_stubs(torch.spyre)
-
-        # Config normalization runs in the Engine (parent) process, before any
-        # worker calls init_backend(), so the model-config repairs are installed
-        # here, deferred until SGLang's config module finishes importing.
-        _install_when_imported(
-            "sglang.srt.utils.hf_transformers.config",
-            "sglang_spyre_backend.models",
-            "install_config_hooks",
-        )
-
-        return "sglang_spyre_backend.platform.SpyreSRTPlatform"
-
-    except Exception as e:
-        import logging
-        logging.getLogger(__name__).debug(
-            "SpyreBackend: not activating — %s", e
-        )
+    if importlib.util.find_spec("torch_spyre") is None:
         return None
+    os.environ["TORCH_DEVICE_BACKEND_AUTOLOAD"] = "0"
+    # Model-config normalization runs in the parent; native device and comms
+    # registration wait until the scheduler has published its rank placement.
+    _install_when_imported(
+        "sglang.srt.utils.hf_transformers.config",
+        "sglang_spyre_backend.models",
+        "install_config_hooks",
+    )
+    return "sglang_spyre_backend.platform.SpyreSRTPlatform"

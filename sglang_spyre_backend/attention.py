@@ -65,9 +65,10 @@ def _ceil_to(value: int, alignment: int) -> int:
 class SpyreAttentionBackend(AttentionBackend):
     """spyre-inference head-major paged attention behind SGLang's backend API.
 
-    Decoder self-attention, TP=1. Batches of several sequences are accepted by the
-    builder and the batched decode kernel, as in spyre-inference; the engine
-    defaults keep ``max_running_requests=1`` for the validated configuration.
+    Decoder self-attention over each TP rank's local Q/KV heads. KV replication
+    when there are fewer KV heads than ranks is resolved by SGLang's model
+    layers; this adapter consumes their ``tp_*_head_num`` values. Prefill and
+    decode batches share the page table and keep request rows separate.
     """
 
     needs_cpu_seq_lens: bool = True

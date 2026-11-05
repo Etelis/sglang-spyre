@@ -42,6 +42,25 @@ _TRANSPOSE_BLOCK_ROWS = 128
 LM_HEAD_ROW_ALIGN = 64 * 32
 
 
+def shard_replicated_lm_head_weight(
+    weight: torch.Tensor, tp_rank: int, tp_size: int
+) -> torch.Tensor:
+    """Split a replicated tied table into equally-sized vocabulary shards.
+
+    The original CPU embedding table stays intact. The final rank is padded
+    when necessary so the host logits all-gather has equal-width inputs;
+    SGLang trims the gathered logits back to the real vocabulary size.
+    """
+    if tp_size == 1:
+        return weight
+    shard_rows = (weight.shape[0] + tp_size - 1) // tp_size
+    start = tp_rank * shard_rows
+    shard = weight[start : min(start + shard_rows, weight.shape[0])]
+    if shard.shape[0] < shard_rows:
+        shard = F.pad(shard, (0, 0, 0, shard_rows - shard.shape[0]))
+    return shard
+
+
 def _transpose_contiguous(w: torch.Tensor) -> torch.Tensor:
     """`w.t().contiguous()`, bit-identical. PyTorch copies a 2-D transpose on one thread;
     with SPYRE_BLOCKED_TRANSPOSE a 2-D CPU `w` is copied 128 source rows at a time, which
@@ -163,5 +182,6 @@ __all__ = [
     "SpyreLMHeadMethod",
     "SpyrePaddedRowsLinearMethod",
     "SpyreUnquantizedLinearMethod",
+    "shard_replicated_lm_head_weight",
     "spyre_linear_t",
 ]

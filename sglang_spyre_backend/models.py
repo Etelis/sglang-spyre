@@ -162,6 +162,10 @@ def _gemma4_moe_forward(self, hidden_states: torch.Tensor, router_logits: torch.
     out = torch.ops.sglang_spyre.moe_forward(
         hidden_states, router_logits, LayerName(self._spyre_moe_key)
     )
+    if self.experts.reduce_results and self.experts.moe_tp_size > 1:
+        from sglang.srt.distributed import tensor_model_parallel_all_reduce
+
+        out = tensor_model_parallel_all_reduce(out)
     return out.view(num_tokens, hidden_dim)
 
 

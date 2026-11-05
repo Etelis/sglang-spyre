@@ -70,3 +70,9 @@ class SpyreDeviceMixin(DeviceMixin):
     def get_torch_distributed_backend_str(self) -> str:
         # spyreccl for Spyre tensors; gloo for CPU coordination tensors.
         return "cpu:gloo,spyre:spyreccl"
+
+    def get_device_module(self):
+        """Synchronous host scheduler streams, usable before native imports."""
+        from sglang_spyre_backend.worker import HOST_DEVICE_MODULE
+
+        return HOST_DEVICE_MODULE

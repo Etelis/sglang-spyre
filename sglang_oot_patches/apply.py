@@ -11,6 +11,12 @@ server-argument hook accepts only in-tree attention backends, so the Spyre
 backend names are added to its allowlist. Idempotent: an already-patched file
 is skipped.
 
+The parallel-runtime entry calls the OOT backend after scheduler ranks have
+been published, so a Spyre worker can select its card and initialize collectives
+before SGLang constructs the distributed process groups.
+Spyre also skips the CPU/AMX model-shape padding: its native TP loader handles
+replicated KV heads and its device kernels use the checkpoint's dimensions.
+
 Run inside the venv where sglang is installed:
     python sglang_oot_patches/apply.py
 """
@@ -42,6 +48,34 @@ def _sglang_srt_dir() -> str:
 
 PATCHES = [
     # (relative path, old, new)
+    (
+        "model_executor/model_runner.py",
+        '''        if self.device == "cpu":
+            self.model_config = adjust_config_with_unaligned_cpu_tp(''',
+        '''        if self.device == "cpu" and current_platform.device_type != "spyre":
+            self.model_config = adjust_config_with_unaligned_cpu_tp(''',
+    ),
+    (
+        "utils/common.py",
+        '''def get_device_module():
+    # Resolve from the platform checks: torch.get_device_module() with no''',
+        '''def get_device_module():
+    if current_platform.device_type == "spyre":
+        return current_platform.get_device_module()
+    # Resolve from the platform checks: torch.get_device_module() with no''',
+    ),
+    (
+        "distributed/bootstrap.py",
+        '''    logger.info("Init parallel begin.")
+
+    backend = _resolve_backend(device=device)''',
+        '''    logger.info("Init parallel begin.")
+
+    if current_platform.device_type == "spyre":
+        current_platform.init_backend()
+
+    backend = _resolve_backend(device=device)''',
+    ),
     (
         "utils/common.py",
         'return backend not in ["torch_native", "intel_amx"]',
